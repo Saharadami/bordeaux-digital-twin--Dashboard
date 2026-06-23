@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Bordeaux Digital Twin — Resource List</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; font-size: 13px; background: #f5f6fa; color: #222; padding: 30px; }
+  h1 { font-size: 22px; margin-bottom: 4px; color: #1a1a2e; }
+  .subtitle { color: #666; margin-bottom: 24px; font-size: 13px; }
+  .stats { display: flex; gap: 16px; margin-bottom: 28px; flex-wrap: wrap; }
+  .stat { background: white; border-radius: 8px; padding: 12px 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+  .stat-num { font-size: 24px; font-weight: bold; color: #2d3436; }
+  .stat-label { font-size: 11px; color: #888; margin-top: 2px; }
+  .domain-section { margin-bottom: 28px; }
+  .domain-header { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 8px 8px 0 0; font-weight: bold; font-size: 14px; color: white; }
+  .domain-count { font-size: 11px; opacity: 0.85; font-weight: normal; margin-left: auto; }
+  table { width: 100%; border-collapse: collapse; background: white; border-radius: 0 0 8px 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.07); }
+  th { background: #f8f9fa; padding: 8px 12px; text-align: left; font-size: 11px; color: #555; font-weight: 600; border-bottom: 1px solid #e9ecef; }
+  td { padding: 8px 12px; border-bottom: 1px solid #f0f0f0; vertical-align: top; font-size: 12px; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #fafbfc; }
+  .badge { display: inline-block; padding: 2px 7px; border-radius: 10px; font-size: 10px; font-weight: bold; white-space: nowrap; }
+  .rt   { background: #ffe0e0; color: #c0392b; }
+  .daily{ background: #fff3cd; color: #856404; }
+  .hour { background: #e8f4fd; color: #1a6196; }
+  .ann  { background: #e8f8e8; color: #276221; }
+  .stat2{ background: #f0f0f0; color: #555; }
+  .other{ background: #f0e8ff; color: #5a3e8a; }
+  .p1 { color: #e74c3c; font-weight: bold; }
+  .p2 { color: #f39c12; font-weight: bold; }
+  .p3 { color: #95a5a6; }
+  .high { color: #e74c3c; font-weight: bold; }
+  .med  { color: #f39c12; font-weight: bold; }
+  .low  { color: #95a5a6; }
+  a { color: #3498db; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .fmt { font-family: monospace; font-size: 11px; color: #555; }
+  .src { font-size: 11px; color: #777; }
+  .footer { color:#999; font-size:11px; margin-top:20px; text-align:center; }
+</style>
+</head>
+<body>
+<h1>Bordeaux Urban Digital Twin — Resource List</h1>
+<p class="subtitle">Complete inventory of data sources by domain · June 2026</p>
+<div class="stats">
+  <div class="stat"><div class="stat-num">71</div><div class="stat-label">Total Datasets</div></div>
+  <div class="stat"><div class="stat-num">10</div><div class="stat-label">Domains</div></div>
+  <div class="stat"><div class="stat-num">20</div><div class="stat-label">Data Sources</div></div>
+  <div class="stat"><div class="stat-num">25</div><div class="stat-label">Real-time feeds</div></div>
+</div>
+
+<div class="domain-section">
+  <div class="domain-header" style="background:#e8593c;">🚗 Mobility &amp; traffic <span class="domain-count">15 datasets</span></div>
+  <table><tr><th>Dataset</th><th>Source</th><th>Format</th><th>Update</th><th>Priority</th></tr>
+  <tr><td><a href="https://opendata.bordeaux-metropole.fr/explore/dataset/ci_trafi_l/information/">Real-time traffic conditions</a><br><span class="src">Road Traffic</span></td><td>Bordeaux Metropole</td><td class="fmt">GeoJSON</td><td><span class="badge rt">Real-time 1min</span></td><td class="p1">P1</td></tr>
+  <tr><td><a href="https://opendata.bordeaux-metropole.fr/explore/dataset/pc_capte_ponct_p/information/">Point traffic sensor</a><br><span class="src">Road Traffic</span></td><td>Bordeaux Metropole</td><td class="fmt">GeoJSON</td><td><span class="badge rt">Real-time 5min</span></td><td class="p2">P2</td></tr>
+  <tr><td><a href="https://opendata.bordeaux-metropole.fr/explore/dataset/pc_capte_p/information/">Traffic counter</a><br><span class="src">Road Traffic</span></td><td>Bordeaux Metropole</td><td class="fmt">GeoJSON</td><td><span class="badge rt">Real-time 5min</span></td><td class="p1">P1</td></tr>
+  <tr><td><a href="https://opendata.bordeaux-metropole.fr/explore/dataset/sv_chem_l/information/">Path of a SAEIV line</a><br><span class="src">Public Transport</span></td><td>Bordeaux Metropole</td><td class="fmt">GeoJSON</td><td><span class="badge stat2">Static</span></td><td class="p1">P1</td></tr>
+  <tr><td><a href="https://opendata.bordeaux-metropole.fr/explore/dataset/sv_cours_a/information/">Vehicle running on SAEIV track</a><br><span class="src">Public Transport</span></td><td>Bordeaux Metropole</td><td class="fmt">GeoJSON</td><td><span class="badge rt">Real-time 1min</span></td><td class="p1">P1</td></tr>
+  <tr><td><a href="https://opendata.bordeaux-metropole.fr/explore/dataset/sv_vehic_p/information/">Vehicle in service on SAEIV</a><br><span class="src">Public Transport</span></td><td>Bordeaux Metropole</td><td class="fmt">GeoJSON</td><td><span class="badge rt">Real-time 1min</span></td><td class="p1">P1</td></tr>
+  <tr><td><a href="https://opendata.bordeaux-metropole.fr/explore/dataset/sv_tronc_l/information/">Elementary section of SAEIV route</a><br><span class="src">Public Transport</span></td><td>Bordeaux Metropole</td><td class="fmt">GeoJSON</td><td><span class="badge stat2">Static</span></td><td class="p1">P1</td></tr>
+  <tr><td><a href="https://opendata.bordeaux-metropole.fr/explore/dataset/sv_arret_p/information/">Physical stop on SAEIV network</a><br><span class="src">Public Transport</span></td><td>Bordeaux Metropole</td><td class="fmt">GeoJSON</td><td><span class="badge stat2">Static</span></td><td class="p1">P1</td></tr>
+  <tr><td><a href="https://opendata.bordeaux-metropole.fr/explore/dataset/sv_tronc_devia_l/information/">SAEIV Diversion Section</a><br><span class="src">Public Transport</span></td><td>Bordeaux Metropole</td><td class="fmt">GeoJSON</td><td><span class="badge rt">Real-time</span></td><td class="p2">P2</td></tr>
+  <tr><td><a href="https://opendata.bordeaux-metropole.fr/explore/dataset/st_park_p/information/">Off-street parking</a><br><span class="src">Parking</span></td><td>Bordeaux Metropole</td><td class="fmt">GeoJSON</td><td><span class="badge stat2">Static</span></td><td class="p1">P1</td></tr>
+  <tr><td><a href="https://opendata.bordeaux-metropole.fr/explore/dataset/parkings-donnees-techniques-2026/information/">Parking technical data 2026</a><br><span class="src">Parking</span></td><td>Bordeaux Metropole</td><td class="fmt">JSON;CSV</td><td><span class="badge rt">Real-time 5min</span></td><td class="p1">P1</td></tr>
+  <tr><td><a href="https://opendata.bordeaux-metropole.fr/explore/dataset/sv_devia_l/information/">Scheduled diversion on SAEIV</a><br><span class="src">Public Transport</span></td><td>Bordeaux Metropole</td><td class="fmt">GeoJSON</td><td><span class="badge daily">Daily</span></td><td class="p2">P2</td></tr>
+  <tr><td><a href="https://opendata.bordeaux-metropole.fr/explore/dataset/sv_arret_p_sv_lipub_a/information/">Stop to public place relation</a><br><span class="src">Public Transport</span></td><td>Bordeaux Metropole</td><td class="fmt">CSV</td><td><span class="badge stat2">Static</span></td><td class="p2">P2</td></tr>
+  <tr><td><a href="https://opendata.bordeaux-metropole.fr/explore/dataset/sv_bornesae_a_sv_arret_p/information/">Terminal to stop relation</a><br><span class="src">Public Transport</span></td><td>Bordeaux Metropole</td><td class="fmt">CSV</td><td><span class="badge stat2">Static</span></td><td class="p2">P2</td></tr>
+  <tr><td><a href="https://www.eea.europa.eu/en/datahub/datahubitem-view/1c1ffad2-34c3-471b-bd69-dd013cdd7b80">Real world emissions from cars and vans</a><br><span class="src">Emissions</span></td><td>EEA</td><td class="fmt">CSV</td><td><span class="badge ann">Annual</span></td><td class="p2">P2</td></tr>
+  </table>
+</div>
+
+<div class="domain-section">
+  <div class="domain-header" style="background:#3b8bd4;">🌤️ Weather <span class="domain-count">14 datasets</span></div>
+  <table><tr><th>Dataset</th><th>Source</th><th>Format</th><th>Update</th><th>Priority</th></tr>
+  <tr><td><a href="https://open-meteo.com/en/docs/meteofrance-api">Weather Forecast API (AROME/ARPEGE)</a><br><span class="src">Forecast 1.5km</span></td><td>Open-Meteo</td><td class="fmt">JSON</td><td><span class="badge hour">Hourly</span></td><td class="high">High</td></tr>
+  <tr><td><a href="https://open-meteo.com/en/docs/historical-weather-api">Historical Weather API (ERA5)</a><br><span class="src">Historical 1940-present</span></td><td>Open-Meteo</td><td class="fmt">JSON</td><td><span class="badge hour">Hourly</span></td><td class="high">High</td></tr>
+  <tr><td><a href="https://open-meteo.com/en/docs/historical-forecast-api">Historical Forecast API</a><br><span class="src">Historical 2021-present</span></td><td>Open-Meteo</td><td class="fmt">JSON</td><td><span class="badge hour">Hourly</span></td><td class="med">Medium</td></tr>
+  <tr><td><a href="https://open-meteo.com/en/docs/single-runs-api">Single Runs API</a><br><span class="src">Forecast</span></td><td>Open-Meteo</td><td class="fmt">JSON</td><td><span class="badge other">Per run</span></td><td class="low">Low</td></tr>
+  <tr><td><a href="https://open-meteo.com/en/docs/previous-runs-api">Previous Model Runs API</a><br><span class="src">Forecast</span></td><td>Open-Meteo</td><td class="fmt">JSON</td><td><span class="badge other">Per run</span></td><td class="low">Low</td></tr>
+  <tr><td><a href="https://open-meteo.com/en/docs/ensemble-mean-api">Ensemble Mean API</a><br><span class="src">Forecast uncertainty</span></td><td>Open-Meteo</td><td class="fmt">JSON</td><td><span class="badge hour">Hourly</span></td><td class="med">Medium</td></tr>
+  <tr><td><a href="https://open-meteo.com/en/docs/seasonal-forecast-api">Seasonal Forecast API</a><br><span class="src">6-month forecast</span></td><td>Open-Meteo</td><td class="fmt">JSON</td><td><span class="badge other">Monthly</span></td><td class="med">Medium</td></tr>
+  <tr><td><a href="https://open-meteo.com/en/docs/climate-api">Climate API (CMIP6)</a><br><span class="src">2015-2100</span></td><td>Open-Meteo</td><td class="fmt">JSON</td><td><span class="badge hour">Hourly</span></td><td class="high">High</td></tr>
+  <tr><td><a href="http://open-meteo.com/en/docs/marine-weather-api">Marine Weather API</a><br><span class="src">Gironde estuary</span></td><td>Open-Meteo</td><td class="fmt">JSON</td><td><span class="badge hour">Hourly</span></td><td class="low">Low</td></tr>
+  <tr><td><a href="https://cds.climate.copernicus.eu/datasets/reanalysis-era5-land?tab=overview">ERA5-Land (1950-present)</a><br><span class="src">Reanalysis 9km</span></td><td>Copernicus CDS</td><td class="fmt">NetCDF;GRIB</td><td><span class="badge hour">Hourly</span></td><td class="high">High</td></tr>
+  <tr><td><a href="https://cds.climate.copernicus.eu/datasets/reanalysis-era5-single-levels?tab=overview">ERA5 Single Levels (1940-present)</a><br><span class="src">Reanalysis 31km</span></td><td>Copernicus CDS</td><td class="fmt">NetCDF;GRIB</td><td><span class="badge hour">Hourly</span></td><td class="high">High</td></tr>
+  <tr><td><a href="https://cds.climate.copernicus.eu/datasets/satellite-carbon-dioxide?tab=overview">Carbon dioxide data (2002-present)</a><br><span class="src">GHG Satellite</span></td><td>Copernicus CDS</td><td class="fmt">NetCDF</td><td><span class="badge daily">Daily</span></td><td class="med">Medium</td></tr>
+  <tr><td><a href="https://cds.climate.copernicus.eu/datasets/satellite-methane?tab=overview">Methane data (2002-present)</a><br><span class="src">GHG Satellite</span></td><td>Copernicus CDS</td><td class="fmt">NetCDF</td><td><span class="badge daily">Daily</span></td><td class="med">Medium</td></tr>
+  <tr><td><a href="https://cds.climate.copernicus.eu/datasets/sis-hydrology-variables-derived-seasonal-forecast?tab=overview">River discharge seasonal forecasts</a><br><span class="src">Hydrology Garonne</span></td><td>Copernicus CDS</td><td class="fmt">NetCDF</td><td><span class="badge other">Monthly</span></td><td class="high">High</td></tr>
+  </table>
+</div>
+
+<div class="domain-section">
+  <div class="domain-header" style="background:#1d9e75;">🌬️ Air quality <span class="domain-count">8 datasets</span></div>
+  <table><tr><th>Dataset</th><th>Source</th><th>Format</th><th>Update</th><th>Priority</th></tr>
+  <tr><td><a href="https://www.eea.europa.eu/en/datahub/datahubitem-view/82700fbd-2953-467b-be0a-78a520c3a7ef">European AQ interpolated Series</a><br><span class="src">PM10/PM2.5/NO2/O3 Grid</span></td><td>EEA</td><td class="fmt">CSV;NetCDF</td><td><span class="badge ann">Annual</span></td><td class="high">High</td></tr>
+  <tr><td><a href="https://www.eea.europa.eu/en/datahub/datahubitem-view/abc66a42-b595-4e0f-9772-b862dc454e9f">PM10 European AQ interpolated</a><br><span class="src">PM10 Grid Europe</span></td><td>EEA</td><td class="fmt">CSV;NetCDF</td><td><span class="badge ann">Annual</span></td><td class="high">High</td></tr>
+  <tr><td><a href="https://datahub.bordeaux-metropole.fr/explore/dataset/gir_concentration-polluant-jour-atmo/information/">PM10/PM2.5/NO2 in Gironde</a><br><span class="src">Local stations</span></td><td>Bordeaux Metropole / Atmo NA</td><td class="fmt">JSON;CSV</td><td><span class="badge daily">Daily</span></td><td class="high">High</td></tr>
+  <tr><td><a href="https://datahub.bordeaux-metropole.fr/explore/dataset/bor_inventaire-polluants-atmo/information/">Pollutant emissions inventory</a><br><span class="src">NOx/PM/SO2/CO territorial</span></td><td>Bordeaux Metropole / Atmo NA</td><td class="fmt">CSV</td><td><span class="badge ann">Annual</span></td><td class="high">High</td></tr>
+  <tr><td><a href="https://opendata.atmo-na.org/dataset/mesures/journaliere/24">Daily AQ measurements Atmo NA</a><br><span class="src">All stations New Aquitaine</span></td><td>Atmo Nouvelle-Aquitaine</td><td class="fmt">JSON;CSV</td><td><span class="badge daily">Daily</span></td><td class="high">High</td></tr>
+  <tr><td><a href="https://opendata.atmo-na.org/dataset/modelisations/13/PM10/moy_a/2024">AQ modeling New Aquitaine PM10</a><br><span class="src">1km grid model</span></td><td>Atmo Nouvelle-Aquitaine</td><td class="fmt">GeoTIFF;NetCDF</td><td><span class="badge ann">Annual</span></td><td class="high">High</td></tr>
+  <tr><td><a href="https://www.eea.europa.eu/en/datahub/datahubitem-view/3b390c9c-f321-490a-b25a-ae93b2ed80c1">Air Quality e-Reporting</a><br><span class="src">EU compliance reporting</span></td><td>EEA</td><td class="fmt">CSV</td><td><span class="badge ann">Annual</span></td><td class="med">Medium</td></tr>
+  <tr><td><a href="https://www.eea.europa.eu/en/datahub/datahubitem-view/f735fb1c-895d-4ea4-9dd7-fc7fdff6fbc8">Burden of disease of air pollution</a><br><span class="src">Health impact PM2.5/NO2/O3</span></td><td>EEA</td><td class="fmt">CSV</td><td><span class="badge ann">Annual</span></td><td class="high">High</td></tr>
+  </table>
+</div>
+
+<div class="domain-section">
+  <div class="domain-header" style="background:#3b6d11;">🌿 Environment <span class="domain-count">7 datasets</span></div>
+  <table><tr><th>Dataset</th><th>Source</th><th>Format</th><th>Update</th><th>Priority</th></tr>
+  <tr><td><a href="https://www.eea.europa.eu/en/datahub/datahubitem-view/3b7fe76c-524a-439a-bfd2-a6e4046302a2">GHG emissions inventories</a><br><span class="src">CO2/CH4/N2O national</span></td><td>EEA</td><td class="fmt">CSV</td><td><span class="badge ann">Annual</span></td><td class="med">Medium</td></tr>
+  <tr><td><a href="https://www.eea.europa.eu/en/datahub/datahubitem-view/06c3dcab-77bd-462b-b19e-32ac72d9155d">WISE WFD Protected Areas</a><br><span class="src">Drinking/Bathing zones</span></td><td>EEA</td><td class="fmt">GeoJSON;SHP</td><td><span class="badge ann">Annual</span></td><td class="med">Medium</td></tr>
+  <tr><td><a href="https://www.eea.europa.eu/en/datahub/datahubitem-view/9405f714-8015-4b5b-a63c-280b82861b3d">Industrial Emissions IED E-PRTR</a><br><span class="src">Point source pollution</span></td><td>EEA</td><td class="fmt">CSV</td><td><span class="badge ann">Annual</span></td><td class="high">High</td></tr>
+  <tr><td><a href="https://www.eea.europa.eu/en/datahub/datahubitem-view/ff3e1971-494d-4fa5-a57c-660e0f35d451">WISE WFD Reference Spatial</a><br><span class="src">Garonne catchment</span></td><td>EEA</td><td class="fmt">GeoJSON;SHP</td><td><span class="badge other">Every 6y</span></td><td class="med">Medium</td></tr>
+  <tr><td><a href="https://www.eea.europa.eu/en/datahub/datahubitem-view/94438969-2dd5-4ba3-b708-e4d29a8b7699">EEA Administrative Boundaries</a><br><span class="src">NUTS regions</span></td><td>EEA</td><td class="fmt">GeoJSON;SHP</td><td><span class="badge ann">Annual</span></td><td class="low">Low</td></tr>
+  <tr><td><a href="https://www.eea.europa.eu/en/datahub/datahubitem-view/b8a5a51f-0c8e-44bc-bac2-2afa6b9444da">HRL Tree Cover Density</a><br><span class="src">10m raster urban green</span></td><td>EEA / Copernicus</td><td class="fmt">GeoTIFF</td><td><span class="badge other">Every 3y</span></td><td class="high">High</td></tr>
+  <tr><td><a href="https://www.georisques.gouv.fr/doc-api#/CATNAT/rechercheCatNat">Natural Disaster Decrees CATNAT</a><br><span class="src">1982-present Bordeaux</span></td><td>Georisques / GASPAR</td><td class="fmt">JSON</td><td><span class="badge stat2">Static</span></td><td class="p2">P2</td></tr>
+  </table>
+</div>
+
+<div class="domain-section">
+  <div class="domain-header" style="background:#0077b6;">💧 Water <span class="domain-count">7 datasets</span></div>
+  <table><tr><th>Dataset</th><th>Source</th><th>Format</th><th>Update</th><th>Priority</th></tr>
+  <tr><td><a href="https://www.vigicrues.gouv.fr/station/O972001001">River level and flow Garonne Bordeaux</a><br><span class="src">Station O972001001</span></td><td>Vigicrues / SCHAPI</td><td class="fmt">JSON</td><td><span class="badge rt">Real-time</span></td><td class="p1">P1</td></tr>
+  <tr><td><a href="https://www.vigicrues.gouv.fr/">Vigicrues flood vigilance bulletins</a><br><span class="src">Green/Yellow/Orange/Red</span></td><td>Vigicrues</td><td class="fmt">JSON</td><td><span class="badge rt">Real-time</span></td><td class="p1">P1</td></tr>
+  <tr><td><a href="https://www.eea.europa.eu/en/datahub/datahubitem-view/c3858959-90da-4c1b-b9ca-492db0e514df">Bathing Water Directive</a><br><span class="src">Gironde bathing sites</span></td><td>EEA</td><td class="fmt">CSV</td><td><span class="badge ann">Annual</span></td><td class="med">Medium</td></tr>
+  <tr><td><a href="https://www.eea.europa.eu/en/datahub/datahubitem-view/06c3dcab-77bd-462b-b19e-32ac72d9155d">WISE WFD Protected Areas</a><br><span class="src">Drinking water catchments</span></td><td>EEA</td><td class="fmt">GeoJSON;SHP</td><td><span class="badge ann">Annual</span></td><td class="med">Medium</td></tr>
+  <tr><td><a href="https://www.eea.europa.eu/en/datahub/datahubitem-view/3ccf2fe3-40e3-4968-a54c-5a59510fa5a3">WFD Surface water centrelines</a><br><span class="src">Garonne and Dordogne</span></td><td>EEA</td><td class="fmt">GeoJSON;SHP</td><td><span class="badge other">Every 6y</span></td><td class="med">Medium</td></tr>
+  <tr><td><a href="https://datahub.bordeaux-metropole.fr/explore/dataset/to_hydro_s/information/">Water Surface Hydrographic Network</a><br><span class="src">17265 records</span></td><td>Bordeaux Metropole</td><td class="fmt">GeoJSON</td><td><span class="badge daily">Daily</span></td><td class="p1">P1</td></tr>
+  <tr><td><a href="https://www.georisques.gouv.fr/doc-api#/AZI/rechercheRisques_7">Flood Zone Atlases AZI</a><br><span class="src">code_insee=33063</span></td><td>Georisques / SCHAPI</td><td class="fmt">JSON</td><td><span class="badge stat2">Static</span></td><td class="p1">P1</td></tr>
+  </table>
+</div>
+
+<div class="domain-section">
+  <div class="domain-header" style="background:#f4a261;">⚡ Energy <span class="domain-count">9 datasets</span></div>
+  <table><tr><th>Dataset</th><th>Source</th><th>Format</th><th>Update</th><th>Priority</th></tr>
+  <tr><td><a href="https://datahub.bordeaux-metropole.fr/explore/dataset/eg_cada_solaire_s/information/">Solar Cadastre</a><br><span class="src">391k rooftop polygons</span></td><td>Bordeaux Metropole</td><td class="fmt">GeoJSON;GeoTIFF</td><td><span class="badge other">Irregular</span></td><td class="p1">P1</td></tr>
+  <tr><td><a href="https://datahub.bordeaux-metropole.fr/explore/dataset/eg_reseau_chaleur_l/information/">Urban Heating Network Piping</a><br><span class="src">2463 segments</span></td><td>Bordeaux Metropole</td><td class="fmt">GeoJSON;DWG</td><td><span class="badge daily">Daily</span></td><td class="p2">P2</td></tr>
+  <tr><td><a href="https://datahub.bordeaux-metropole.fr/explore/dataset/eg_poste_monitore_quartier_a/information/">Electricity Consumption Bastide</a><br><span class="src">30-min 28k records</span></td><td>Bordeaux Metropole / Enedis</td><td class="fmt">JSON;CSV</td><td><span class="badge daily">Daily 30min</span></td><td class="p1">P1</td></tr>
+  <tr><td><a href="https://datahub.bordeaux-metropole.fr/explore/dataset/eg_equipement_photovoltaique_s/information/">Photovoltaic Equipment</a><br><span class="src">77 public installations</span></td><td>Bordeaux Metropole</td><td class="fmt">GeoJSON;DWG</td><td><span class="badge other">Quarterly</span></td><td class="p2">P2</td></tr>
+  <tr><td><a href="https://odre.opendatasoft.com/explore/dataset/part-enr-intensite-ges-conso-tr/information/">RTE Renewable Share and GHG Intensity</a><br><span class="src">gCO2eq/kWh H-4</span></td><td>RTE / ODRE</td><td class="fmt">JSON;CSV</td><td><span class="badge hour">Hourly</span></td><td class="p1">P1</td></tr>
+  <tr><td><a href="https://odre.opendatasoft.com/explore/dataset/conso-jour-nat-eldgrd-grt/information/">Final Hourly Gas Consumption</a><br><span class="src">National baseline</span></td><td>NaTran Terega / ODRE</td><td class="fmt">JSON;CSV</td><td><span class="badge daily">Daily</span></td><td class="p3">P3</td></tr>
+  <tr><td><a href="https://odre.opendatasoft.com/explore/dataset/igrm-dep/information/">Monthly Renewable Gas Indicator</a><br><span class="src">Dept. 33 Gironde</span></td><td>GRDF / ODRE</td><td class="fmt">JSON;CSV</td><td><span class="badge other">Monthly</span></td><td class="p2">P2</td></tr>
+  <tr><td><a href="https://opendata.enedis.fr/datasets/bilan-electrique-demi-heure-en-jplus4">Electrical Power Outputs 15-min J+4</a><br><span class="src">Rolling 9 days</span></td><td>Enedis</td><td class="fmt">JSON;CSV</td><td><span class="badge daily">Daily 15min</span></td><td class="p1">P1</td></tr>
+  <tr><td><a href="https://opendata.enedis.fr/datasets/registre-national-installation-production-stockage-electricite-agrege-311225">Electricity Production and Storage 2025</a><br><span class="src">115k records dept=33</span></td><td>Enedis / RTE</td><td class="fmt">CSV</td><td><span class="badge other">Irregular</span></td><td class="p2">P2</td></tr>
+  </table>
+</div>
+
+<div class="domain-section">
+  <div class="domain-header" style="background:#ba7517;">🏢 Buildings <span class="domain-count">1 dataset</span></div>
+  <table><tr><th>Dataset</th><th>Source</th><th>Format</th><th>Update</th><th>Priority</th></tr>
+  <tr><td><a href="https://datahub.bordeaux-metropole.fr/explore/dataset/demande-de-valeurs-foncieres-geolocalisee-bordeaux-metropole/information/">Geolocated Land Value Requests DVF</a><br><span class="src">476k records 2014-present</span></td><td>Bordeaux Metropole / Etalab</td><td class="fmt">GeoJSON</td><td><span class="badge other">Semiannual</span></td><td class="p2">P2</td></tr>
+  </table>
+</div>
+
+<div class="domain-section">
+  <div class="domain-header" style="background:#9b59b6;">👥 Population <span class="domain-count">4 datasets</span></div>
+  <table><tr><th>Dataset</th><th>Source</th><th>Format</th><th>Update</th><th>Priority</th></tr>
+  <tr><td><a href="https://datahub.bordeaux-metropole.fr/explore/dataset/se_iri24_s/information/">IRIS Outlines Geography 2024</a><br><span class="src">838 IRIS zones Gironde</span></td><td>INSEE / Bordeaux Metropole</td><td class="fmt">GeoJSON;DWG</td><td><span class="badge ann">Annual</span></td><td class="p1">P1</td></tr>
+  <tr><td><a href="https://datahub.bordeaux-metropole.fr/explore/dataset/evolution-et-structure-de-la-population-millesime-bordeaux-metropole/information/">Population Trends and Structure 2007-2017</a><br><span class="src">8736 records age/sex/CSP</span></td><td>INSEE</td><td class="fmt">CSV</td><td><span class="badge other">Vintage</span></td><td class="p1">P1</td></tr>
+  <tr><td><a href="https://datahub.bordeaux-metropole.fr/explore/dataset/historique-des-populations-legales-des-communes-bordeaux-metropole/information/">Historical Legal Populations 1968-2014</a><br><span class="src">392 records commune level</span></td><td>INSEE</td><td class="fmt">CSV</td><td><span class="badge other">Vintage</span></td><td class="p2">P2</td></tr>
+  <tr><td><a href="https://datahub.bordeaux-metropole.fr/explore/dataset/population-bordeaux-metropole-donnees-carroyees-a-200-metres-millesime-2015/information/">Population Grid 200m 2015</a><br><span class="src">6490 grid cells</span></td><td>INSEE</td><td class="fmt">GeoJSON</td><td><span class="badge other">Vintage</span></td><td class="p2">P2</td></tr>
+  </table>
+</div>
+
+<div class="domain-section">
+  <div class="domain-header" style="background:#e74c3c;">📡 Sensors <span class="domain-count">2 datasets</span></div>
+  <table><tr><th>Dataset</th><th>Source</th><th>Format</th><th>Update</th><th>Priority</th></tr>
+  <tr><td><a href="https://datahub.bordeaux-metropole.fr/explore/dataset/rt_ondeelectro_p/information/">Electromagnetic wave sensor</a><br><span class="src">33 sensors SIGFOX network</span></td><td>Bordeaux Metropole</td><td class="fmt">GeoJSON</td><td><span class="badge other">~2h (Finalized)</span></td><td class="p2">P2</td></tr>
+  <tr><td><a href="https://datahub.bordeaux-metropole.fr/explore/dataset/pc_captp_p/information/">Pedestrian traffic sensor</a><br><span class="src">14 sensors 4G</span></td><td>Bordeaux Metropole</td><td class="fmt">GeoJSON</td><td><span class="badge daily">Daily</span></td><td class="p2">P2</td></tr>
+  </table>
+</div>
+
+<div class="domain-section">
+  <div class="domain-header" style="background:#c0392b;">🌐 Online DataSet <span class="domain-count">4 datasets</span></div>
+  <table><tr><th>Dataset</th><th>Source</th><th>Format</th><th>Update</th><th>Priority</th></tr>
+  <tr><td><a href="https://datahub.bordeaux-metropole.fr/explore/dataset/ci_vcub_p/information/">Real-time bike station</a><br><span class="src">223 stations GBFS</span></td><td>Bordeaux Metropole</td><td class="fmt">GeoJSON;GBFS</td><td><span class="badge rt">Real-time 2.5min</span></td><td class="p1">P1</td></tr>
+  <tr><td><a href="https://datahub.bordeaux-metropole.fr/explore/dataset/offres-de-services-bus-tramway-gtfs/information/">Tram and school bus GTFS-RT</a><br><span class="src">GTFS-RT SIRI-Lite TBM</span></td><td>Bordeaux Metropole</td><td class="fmt">GTFS;GTFS-RT;NeTEx</td><td><span class="badge rt">Real-time</span></td><td class="p1">P1</td></tr>
+  <tr><td><a href="https://datahub.bordeaux-metropole.fr/explore/dataset/ci_courb_a/information/">Real-time traffic curve</a><br><span class="src">193 road segments</span></td><td>Bordeaux Metropole</td><td class="fmt">JSON;CSV</td><td><span class="badge rt">Real-time 10min</span></td><td class="p1">P1</td></tr>
+  <tr><td><a href="https://datahub.bordeaux-metropole.fr/explore/dataset/ci_tpstj_a/information/">Real-time travel time</a><br><span class="src">16 metropolitan routes</span></td><td>Bordeaux Metropole</td><td class="fmt">JSON;CSV</td><td><span class="badge rt">Real-time 2.5min</span></td><td class="p1">P1</td></tr>
+  </table>
+</div>
+
+<p class="footer">Bordeaux Urban Digital Twin · Data Patrimony · Sahar Adami Kozekonan · June 2026</p>
+</body>
+</html>
