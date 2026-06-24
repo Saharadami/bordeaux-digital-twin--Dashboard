@@ -14,16 +14,17 @@ st.set_page_config(
 
 import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
-from pages import overview, catalog, data_models, ontology, resources
+from pages import overview, catalog, data_models, ontology, resources, collectors_page
 
 st.title("🏙️ Bordeaux Urban Digital Twin")
 st.caption("Data infrastructure · internship project 2026")
 
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "📊 Overview",
     "🗄️ Data catalog",
     "🔷 Data models",
     "🔗 Ontology",
+    "⬇️ Collectors",
     "📋 Resources",
 ])
 
@@ -31,4 +32,5 @@ with tab1: overview.render()
 with tab2: catalog.render()
 with tab3: data_models.render()
 with tab4: ontology.render()
-with tab5: resources.render()
+with tab5: collectors_page.render()
+with tab6: resources.render()
