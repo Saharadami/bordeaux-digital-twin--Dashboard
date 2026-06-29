@@ -86,9 +86,9 @@ def render():
     st.divider()
     st.subheader("Data architecture")
     steps = [
-        ("✅", "Data sources",          "OpenStreetMap · Bordeaux Open Data · Météo France · Atmo NA · TBM · Enedis · Vigicrues…"),
+        ("✅", "Data sources",          "OpenStreetMap · Bordeaux Open Data · Météo France · Atmo NA · TBM GTFS · TBM GTFS-RT · TBM SIRI-Lite · Enedis · Vigicrues · EEA · Copernicus…"),
         ("✅", "Data catalog",          f"{len(CATALOG)} datasets · {len(active_domains)} domains · description · fields · API links"),
-        ("✅", "Data models",           "TrafficMeasure · WeatherRecord · AirQuality · WaterRecord · EnergyRecord · Building · PopulationZone · Sensor · GreenSpace"),
+        ("✅", "Data models",           "TrafficMeasure · WeatherRecord · AirQuality · WaterRecord · EnergyRecord · Building · PopulationZone · Sensor · GreenSpace · TramVehicle"),
         ("✅", "Ontology",              f"{len(RELATIONS)} cross-domain semantic relationships"),
         ("⏳", "Database (PostgreSQL)", "Schema design · PostGIS spatial · TimescaleDB time-series"),
         ("⏳", "Data collectors",       "API connectors · schedulers · real-time ingestion"),

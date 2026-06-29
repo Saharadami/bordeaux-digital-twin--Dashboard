@@ -21,6 +21,7 @@ DOMAIN_META = {
     "Population":  {"icon": "👥", "label": "Population",          "color": "#9b59b6"},
     "Sensors":      {"icon": "📡", "label": "Sensors",            "color": "#e74c3c"},
     "Online DataSet": {"icon": "🌐", "label": "Online DataSet",  "color": "#c0392b"},
+    "Tram B":         {"icon": "🚋", "label": "Tram B",           "color": "#2980b9"},
 }
 
 # ── Load MASTER sheet from Excel ───────────────────────────────────────────────

@@ -44,10 +44,10 @@
 <h1>Bordeaux Urban Digital Twin — Resource List</h1>
 <p class="subtitle">Complete inventory of data sources by domain · June 2026</p>
 <div class="stats">
-  <div class="stat"><div class="stat-num">71</div><div class="stat-label">Total Datasets</div></div>
-  <div class="stat"><div class="stat-num">10</div><div class="stat-label">Domains</div></div>
-  <div class="stat"><div class="stat-num">20</div><div class="stat-label">Data Sources</div></div>
-  <div class="stat"><div class="stat-num">25</div><div class="stat-label">Real-time feeds</div></div>
+  <div class="stat"><div class="stat-num">79</div><div class="stat-label">Total Datasets</div></div>
+  <div class="stat"><div class="stat-num">11</div><div class="stat-label">Domains</div></div>
+  <div class="stat"><div class="stat-num">21</div><div class="stat-label">Data Sources</div></div>
+  <div class="stat"><div class="stat-num">30</div><div class="stat-label">Real-time feeds</div></div>
 </div>
 
 <div class="domain-section">
@@ -178,6 +178,21 @@
   <tr><td><a href="https://datahub.bordeaux-metropole.fr/explore/dataset/offres-de-services-bus-tramway-gtfs/information/">Tram and school bus GTFS-RT</a><br><span class="src">GTFS-RT SIRI-Lite TBM</span></td><td>Bordeaux Metropole</td><td class="fmt">GTFS;GTFS-RT;NeTEx</td><td><span class="badge rt">Real-time</span></td><td class="p1">P1</td></tr>
   <tr><td><a href="https://datahub.bordeaux-metropole.fr/explore/dataset/ci_courb_a/information/">Real-time traffic curve</a><br><span class="src">193 road segments</span></td><td>Bordeaux Metropole</td><td class="fmt">JSON;CSV</td><td><span class="badge rt">Real-time 10min</span></td><td class="p1">P1</td></tr>
   <tr><td><a href="https://datahub.bordeaux-metropole.fr/explore/dataset/ci_tpstj_a/information/">Real-time travel time</a><br><span class="src">16 metropolitan routes</span></td><td>Bordeaux Metropole</td><td class="fmt">JSON;CSV</td><td><span class="badge rt">Real-time 2.5min</span></td><td class="p1">P1</td></tr>
+  </table>
+</div>
+
+
+<div class="domain-section">
+  <div class="domain-header" style="background:#2980b9;">🚋 Tram B <span class="domain-count">8 datasets</span></div>
+  <table><tr><th>Dataset</th><th>Source</th><th>Format</th><th>Update</th><th>Priority</th></tr>
+  <tr><td><a href="https://transport.data.gouv.fr/resources/83024">GTFS Static — Routes + Stops + Timetable + Shapes</a><br><span class="src">207 routes · 5180 stops · 65340 trips · 20.99MB — filter route_short_name=B</span></td><td>TBM / Bordeaux Métropole</td><td class="fmt">GTFS (ZIP)</td><td><span class="badge daily">Daily</span></td><td class="p1">P1</td></tr>
+  <tr><td><a href="https://transport.data.gouv.fr/resources/83026">GTFS-RT — Vehicle Positions (Live GPS)</a><br><span class="src">vehicle_id · lat/lon · bearing · speed · trip_id — filter ineo-tram</span></td><td>TBM / Bordeaux Métropole</td><td class="fmt">GTFS-RT</td><td><span class="badge rt">Real-time ~30s</span></td><td class="p1">P1</td></tr>
+  <tr><td><a href="https://transport.data.gouv.fr/resources/83025">GTFS-RT — Trip Updates (Delays & Cancellations)</a><br><span class="src">trip_id · stop_id · arrival_delay · departure_delay · schedule_relationship</span></td><td>TBM / Bordeaux Métropole</td><td class="fmt">GTFS-RT</td><td><span class="badge rt">Real-time ~30s</span></td><td class="p1">P1</td></tr>
+  <tr><td><a href="https://transport.data.gouv.fr/resources/83027">GTFS-RT — Service Alerts</a><br><span class="src">alert_id · cause · effect · informed_entity · header_text · active_period</span></td><td>TBM / Bordeaux Métropole</td><td class="fmt">GTFS-RT</td><td><span class="badge rt">On event</span></td><td class="p2">P2</td></tr>
+  <tr><td><a href="https://opendata.bordeaux-metropole.fr/explore/dataset/sv_chem_l/information/">Route Geometry — sv_chem_l</a><br><span class="src">ligne_id · ligne_nom · sens · distance · geometry (LineString) — filter ligne_nom=B</span></td><td>Bordeaux Métropole</td><td class="fmt">GeoJSON</td><td><span class="badge stat2">Static</span></td><td class="p1">P1</td></tr>
+  <tr><td><a href="https://opendata.bordeaux-metropole.fr/explore/dataset/sv_arret_p/information/">Physical Stops — sv_arret_p</a><br><span class="src">arret_id · arret_nom · type_arret · pmr_acces · lat/lon — filter type_arret=TRAM</span></td><td>Bordeaux Métropole</td><td class="fmt">GeoJSON</td><td><span class="badge stat2">Static</span></td><td class="p1">P1</td></tr>
+  <tr><td><a href="https://transport.data.gouv.fr/resources/83031">SIRI-Lite — Stop Monitoring (Next Arrivals)</a><br><span class="src">StopPointRef · ExpectedArrivalTime · ExpectedDepartureTime · VehicleRef · Occupancy</span></td><td>TBM / Bordeaux Métropole</td><td class="fmt">JSON (SIRI)</td><td><span class="badge rt">Real-time ~30s</span></td><td class="p1">P1</td></tr>
+  <tr><td><a href="https://transport.data.gouv.fr/resources/83032">SIRI-Lite — Estimated Timetable (Live Schedule)</a><br><span class="src">LineRef · DirectionRef · StopPointRef · AimedArrivalTime · ExpectedArrivalTime</span></td><td>TBM / Bordeaux Métropole</td><td class="fmt">JSON (SIRI)</td><td><span class="badge rt">Real-time ~30s</span></td><td class="p2">P2</td></tr>
   </table>
 </div>
 
