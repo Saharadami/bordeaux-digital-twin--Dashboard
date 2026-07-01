@@ -83,18 +83,5 @@ def render():
                 if d.get("api_url"):
                     st.code(d["api_url"], language=None)
 
-    st.divider()
-    st.subheader("Data architecture")
-    steps = [
-        ("✅", "Data sources",          "OpenStreetMap · Bordeaux Open Data · Météo France · Atmo NA · TBM GTFS · TBM GTFS-RT · TBM SIRI-Lite · Enedis · Vigicrues · EEA · Copernicus…"),
-        ("✅", "Data catalog",          f"{len(CATALOG)} datasets · {len(active_domains)} domains · description · fields · API links"),
-        ("✅", "Data models",           "TrafficMeasure · WeatherRecord · AirQuality · WaterRecord · EnergyRecord · Building · PopulationZone · Sensor · GreenSpace · TramVehicle"),
-        ("✅", "Ontology",              f"{len(RELATIONS)} cross-domain semantic relationships"),
-        ("⏳", "Database (PostgreSQL)", "Schema design · PostGIS spatial · TimescaleDB time-series"),
-        ("⏳", "Data collectors",       "API connectors · schedulers · real-time ingestion"),
-        ("⏳", "Feature engineering",   "Normalization · time features · spatial joins"),
-        ("⏳", "AI models",             "Traffic prediction · weather · pollution forecasting"),
-        ("⏳", "Visualization",         "Heatmaps · time-series · simulation dashboard"),
-    ]
-    for status, name, desc in steps:
-        st.markdown(f"{status} **{name}** — {desc}")
+   
+    

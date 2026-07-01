@@ -1,3 +1,8 @@
 __pycache__/
 *.pyc
 ~$*.xlsx
+Simulation.zip
+data/mobility/
+data/energy/
+fetch_data.py
+.streamlit/secrets.toml
