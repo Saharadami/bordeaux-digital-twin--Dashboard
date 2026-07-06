@@ -18,7 +18,7 @@ from app_pages.simulation import (
     build_route_geojson, build_stops_geojson, build_vehicles_geojson,
     build_html as build_map_html, MODE_ICON,
 )
-from emissions.emissions_engine import compute_emissions
+from emissions.emissions_engine import compute_emissions, OUTLIER_MEDIAN_MULTIPLIER
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 MOBILITY_DIR = os.path.join(DATA_DIR, "mobility")
@@ -331,6 +331,7 @@ def _render_emission_section(zone_insee, zone_name):
         return
 
     df = compute_emissions(latest)
+    excluded_sensor_ids = df.attrs.get("excluded_sensor_ids", [])
     if df.empty:
         st.info("No usable rows in the traffic data to estimate emissions from.")
         return
@@ -373,6 +374,12 @@ def _render_emission_section(zone_insee, zone_name):
         "runs higher. NOx/PM factors are placeholder EU-fleet averages pending further "
         "verification against the EEA/EMEP Tier 1 Guidebook."
     )
+    if excluded_sensor_ids:
+        st.caption(
+            f"ℹ️ {len(excluded_sensor_ids)} sensor(s) excluded as statistical outliers "
+            f"(daily count > {OUTLIER_MEDIAN_MULTIPLIER}× that day's median across sensors): "
+            f"`{', '.join(excluded_sensor_ids)}`"
+        )
 
     with st.expander("📋 Per-sensor / per-day estimate"):
         st.dataframe(
