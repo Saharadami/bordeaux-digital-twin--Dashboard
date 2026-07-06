@@ -23,7 +23,6 @@ MODULES_TO_CHECK = [
     "app_pages.simulation",
     "app_pages.collectors_page",
     "app_pages.resources",
-    "app_pages.historical_data",
     "app_pages.data_model_ontology",
     "app_pages.city_dashboard",
     "app_pages.data_resources",

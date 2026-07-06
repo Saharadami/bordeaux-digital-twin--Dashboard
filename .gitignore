@@ -4,5 +4,8 @@ __pycache__/
 Simulation.zip
 data/mobility/
 data/energy/
+data/traffic/
 fetch_data.py
 .streamlit/secrets.toml
+.claude/
+session-log.html

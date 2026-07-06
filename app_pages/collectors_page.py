@@ -144,18 +144,100 @@ def render_aq():
     st.info("Air quality collector coming in next phase. Dataset: `gir_polluant_jour_1`")
 
 
-def render_traffic():
-    st.markdown("### 🚗 Traffic — Bordeaux Métropole")
-    st.caption("Source: `datahub.bordeaux-metropole.fr` · Real-time · Traffic volume and speed")
+def _latest_csv_for_zone(domain_dir, zone_slug):
+    """Like get_collector_status, but scoped to files saved for a specific zone
+    — collector output files are named e.g. `car_traffic_<zone_slug>_<stamp>.csv`."""
+    if not os.path.exists(domain_dir):
+        return None
+    files = [f for f in os.listdir(domain_dir) if f.endswith(".csv") and f"_{zone_slug}_" in f]
+    if not files:
+        return None
+    return max([os.path.join(domain_dir, f) for f in files], key=os.path.getmtime)
 
-    status = get_collector_status("traffic")
+
+def render_traffic():
+    from datetime import datetime
+    from zones import ZONES, DEFAULT_ZONE
+
+    zone_options = list(ZONES.keys())
+    zone_insee = st.selectbox(
+        "Zone", options=zone_options, index=zone_options.index(DEFAULT_ZONE),
+        format_func=lambda k: ZONES[k]["name"], key="traffic_zone",
+    )
+    zone_name = ZONES[zone_insee]["name"]
+    zone_slug = zone_name.lower()
+
+    st.markdown(f"### 🚗 Car Traffic — {zone_name}")
+    st.caption(
+        "Source: `opendata.bordeaux-metropole.fr` · Live sensor counts (`pc_capte_p`) · "
+        "Daily historical (`pc_capte_p_histo_jour`)"
+    )
+
+    traffic_dir = os.path.join(DATA_DIR, "traffic")
+    latest_path = _latest_csv_for_zone(traffic_dir, zone_slug)
+    if latest_path:
+        try:
+            rows = len(pd.read_csv(latest_path))
+        except Exception:
+            rows = 0
+        status = {
+            "status": "ok", "rows": rows, "latest_path": latest_path,
+            "latest": datetime.fromtimestamp(os.path.getmtime(latest_path)).strftime("%Y-%m-%d %H:%M"),
+        }
+    else:
+        status = {"status": "no_data", "rows": 0, "latest": None}
 
     col1, col2, col3 = st.columns(3)
-    col1.metric("Status", "✅ Data available" if status["status"] == "ok" else "⏳ Not yet implemented")
+    col1.metric("Status", "✅ Data available" if status["status"] == "ok" else "❌ No data yet")
     col2.metric("Records", status["rows"] if status["rows"] else "—")
     col3.metric("Last fetch", status["latest"] if status["latest"] else "—")
 
-    st.info("Traffic collector coming in next phase. Dataset: `ci_trafi_l`")
+    col_btn, col_days = st.columns([1, 2])
+    with col_days:
+        days = st.slider("Days of history to fetch", 7, 365, 90, key="traffic_days")
+    with col_btn:
+        st.markdown("<br>", unsafe_allow_html=True)
+        fetch = st.button("⬇️ Fetch traffic history", key="fetch_traffic", use_container_width=True)
+
+    if fetch:
+        with st.spinner(f"Fetching sensors + history for {zone_name}..."):
+            try:
+                from collectors.traffic_collector import collect
+                df = collect(zone_insee=zone_insee, days_back=days, save=True)
+                if df.empty:
+                    st.warning("No records returned — check the dataset manually: "
+                               "opendata.bordeaux-metropole.fr/explore/dataset/pc_capte_p_histo_jour/")
+                else:
+                    st.success(f"✅ Fetched {len(df)} records")
+                st.rerun()
+            except Exception as e:
+                st.error(f"Error: {e}")
+
+    if status["status"] == "ok":
+        df = pd.read_csv(status["latest_path"])
+        st.divider()
+        st.caption(f"Loaded: `{os.path.basename(status['latest_path'])}` · {len(df)} rows · {df['ident'].nunique() if 'ident' in df.columns else '?'} sensors")
+
+        date_col = "Date de comptage" if "Date de comptage" in df.columns else None
+        if date_col and "comptage_5m" in df.columns:
+            df[date_col] = pd.to_datetime(df[date_col])
+            daily_total = df.groupby(date_col)["comptage_5m"].sum()
+            st.line_chart(daily_total, color="#e8593c", height=300)
+            st.caption("Sum of daily vehicle counts across all sensors in the zone")
+
+        with st.expander("📋 Raw data"):
+            display_df = df.tail(200).rename(columns={
+                "Date de comptage": "Date",
+                "ident": "Sensor ID",
+                "zone": "Sensor Zone Code",
+                "type": "Sensor Type",
+                "comptage_5m": "Vehicle Count",
+                "Geo Point": "Coordinates",
+                "cdate": "Sensor Installed",
+            }).drop(columns=["gid"], errors="ignore")
+            column_order = [c for c in ["Date", "Sensor ID", "Vehicle Count", "Coordinates", "Sensor Type", "Sensor Zone Code", "Sensor Installed"] if c in display_df.columns]
+            st.dataframe(display_df[column_order], use_container_width=True, hide_index=True)
+            st.caption(f"Showing last 200 rows of {len(df)} total")
 
 
 def render():

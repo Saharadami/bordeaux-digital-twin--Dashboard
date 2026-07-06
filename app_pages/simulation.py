@@ -4,11 +4,10 @@ import requests
 import json
 import os
 import sys
+import colorsys
 
 sys.path.insert(0, os.path.dirname(__file__))
 from map_matching import match_vehicle
-
-MAPBOX_TOKEN = st.secrets.get("MAPBOX_TOKEN", os.environ.get("MAPBOX_TOKEN", ""))
 
 GTFS_RT_URL = (
     "https://bdx.mecatran.com/utw/ws/gtfsfeed/vehicles/bordeaux"
@@ -16,24 +15,66 @@ GTFS_RT_URL = (
 )
 STATUS_MAP = {0: "INCOMING_AT", 1: "STOPPED_AT", 2: "IN_TRANSIT_TO"}
 
-# Fallback colors, only used if a line's GTFS route_color was empty
-FALLBACK_COLORS = {
+MODE_ICON = {"tram": "🚋", "bus": "🚌"}
+
+# Fallback colors, only used if a tram line's GTFS route_color was empty
+FALLBACK_TRAM_COLORS = {
     "A": "#831F82", "B": "#E50040", "C": "#D35098",
     "D": "#9262A3", "E": "#967651", "F": "#F08700",
 }
 
-_DATA_PATH = os.path.join(os.path.dirname(__file__), "..", "sim_assets", "tram_all_lines.json")
+_DATA_PATH = os.path.join(os.path.dirname(__file__), "..", "sim_assets", "transit_lines.json")
+
+
+def _distinct_color(i):
+    """TBM's official bus route_color is shared across many lines (branding by
+    service tier, not per-line), so bus lines get a synthetic, evenly-spaced
+    color instead — works for any number of lines."""
+    hue = (i * 0.618033988749895) % 1.0
+    r, g, b = colorsys.hls_to_rgb(hue, 0.55, 0.65)
+    return "#{:02x}{:02x}{:02x}".format(int(r * 255), int(g * 255), int(b * 255))
 
 
 @st.cache_data(show_spinner=False)
 def load_lines_data():
-    """Returns {"A": {route_id, color, outbound, inbound, stops}, "B": {...}, ...}"""
+    """Returns (lines_by_key, tram_keys, bus_keys, zone_lines).
+    lines_by_key: {"tram:A": {route_id, color, outbound, inbound, stops, mode, code}, "bus:23": {...}, ...}
+    zone_lines: {"33522": {"tram": ["tram:B"], "bus": ["bus:4", ...]}, ...}
+    """
     with open(_DATA_PATH, "r", encoding="utf-8") as f:
         data = json.load(f)
-    for letter, line in data.items():
+
+    lines_by_key = {}
+
+    tram_keys = []
+    for code, line in data.get("tram", {}).items():
+        line["mode"] = "tram"
+        line["code"] = code
         if not line.get("color"):
-            line["color"] = FALLBACK_COLORS.get(letter, "#e74c3c")
-    return data
+            line["color"] = FALLBACK_TRAM_COLORS.get(code, "#e74c3c")
+        key = f"tram:{code}"
+        lines_by_key[key] = line
+        tram_keys.append(key)
+
+    bus_keys = []
+    for i, code in enumerate(sorted(data.get("bus", {}).keys())):
+        line = data["bus"][code]
+        line["mode"] = "bus"
+        line["code"] = code
+        line["color"] = _distinct_color(i)
+        key = f"bus:{code}"
+        lines_by_key[key] = line
+        bus_keys.append(key)
+
+    zone_lines = {
+        insee: {
+            "tram": [f"tram:{c}" for c in zl.get("tram", [])],
+            "bus": [f"bus:{c}" for c in zl.get("bus", [])],
+        }
+        for insee, zl in data.get("zone_lines", {}).items()
+    }
+
+    return lines_by_key, tram_keys, bus_keys, zone_lines
 
 
 @st.cache_data(ttl=25, show_spinner=False)
@@ -77,20 +118,22 @@ def fetch_raw_vehicles(route_ids_tuple):
     return raw, None
 
 
-def build_matched_vehicles(raw_vehicles, lines_data, route_to_letter):
+def build_matched_vehicles(raw_vehicles, lines_data, route_to_key):
     """Run map-matching per vehicle, using its own line's route geometry."""
     out = []
     for rv in raw_vehicles:
-        letter = route_to_letter.get(rv["route_id"])
-        line = lines_data.get(letter)
+        key = route_to_key.get(rv["route_id"])
+        line = lines_data.get(key)
         if not line:
             continue
         m = match_vehicle(rv["lon"], rv["lat"], line["outbound"], line["inbound"])
         if m is None:
             continue
         out.append({
-            "label":       f"{letter} · " + rv["id"].split(":")[-1],
-            "line":        letter,
+            "label":       f"{MODE_ICON[line['mode']]}{line['code']} · " + rv["id"].split(":")[-1],
+            "line":        key,
+            "mode":        line["mode"],
+            "code":        line["code"],
             "color":       line["color"],
             "raw_lon":     rv["lon"],
             "raw_lat":     rv["lat"],
@@ -105,13 +148,14 @@ def build_matched_vehicles(raw_vehicles, lines_data, route_to_letter):
     return out
 
 
-def build_stops_geojson(selected_letters, lines_data):
+def build_stops_geojson(selected_keys, lines_data):
     """Dedupe stops across selected lines; stops served by 2+ lines are marked as interchanges."""
     stop_lines = {}   # stop_id -> {"name":..., "lat":..., "lon":..., "lines": set()}
-    for letter in selected_letters:
-        for s in lines_data[letter]["stops"]:
+    for key in selected_keys:
+        code = lines_data[key]["code"]
+        for s in lines_data[key]["stops"]:
             entry = stop_lines.setdefault(s["id"], {"name": s["name"], "lat": s["lat"], "lon": s["lon"], "lines": set()})
-            entry["lines"].add(letter)
+            entry["lines"].add(code)
 
     features = []
     for sid, s in stop_lines.items():
@@ -129,16 +173,16 @@ def build_stops_geojson(selected_letters, lines_data):
     return {"type": "FeatureCollection", "features": features}
 
 
-def build_route_geojson(selected_letters, lines_data):
+def build_route_geojson(selected_keys, lines_data):
     features = []
-    for letter in selected_letters:
-        line = lines_data[letter]
+    for key in selected_keys:
+        line = lines_data[key]
         for dir_name, coords in [("outbound", line["outbound"]), ("inbound", line["inbound"])]:
             if coords:
                 features.append({
                     "type": "Feature",
                     "geometry": {"type": "LineString", "coordinates": coords},
-                    "properties": {"line": letter, "dir": dir_name, "color": line["color"]},
+                    "properties": {"line": line["code"], "dir": dir_name, "color": line["color"]},
                 })
     return {"type": "FeatureCollection", "features": features}
 
@@ -161,17 +205,33 @@ def build_vehicles_geojson(vehicles):
     }
 
 
-def build_html(route_geojson, stops_geojson, vehicles_geojson, n_vehicles):
+def build_html(route_geojson, stops_geojson, vehicles_geojson, n_vehicles,
+                center=(-0.58, 44.85), zoom=11.3, zone_boundary_geojson=None, bounds=None):
+    """Renders the live map with Leaflet (not MapLibre/Mapbox).
+
+    MapLibre GL JS was tried first (see git history) but its vector-tile /
+    GeoJSON worker never completes a single tile inside Streamlit's
+    `about:srcdoc` component iframe — confirmed across Chromium and Firefox,
+    with every worker-loading strategy (auto-detect, blob URL, same-origin
+    static file). Raster tiles load fine in that same iframe (no worker
+    needed), and Leaflet — which has no worker dependency for its core
+    tile/marker/polyline rendering — works reliably. Trade-off: no 3D
+    pitch/tilt or building extrusion (those need vector tiles), but every
+    other feature (route lines, stops, live vehicles, popups, zone outline,
+    dark/light/satellite toggle) is unaffected.
+    """
     route_json = json.dumps(route_geojson)
     stops_json = json.dumps(stops_geojson)
     vehicles_json = json.dumps(vehicles_geojson)
+    zone_json = json.dumps(zone_boundary_geojson) if zone_boundary_geojson else "null"
+    bounds_json = json.dumps(bounds) if bounds else "null"
 
     template = """<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8"/>
-<link href="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css" rel="stylesheet"/>
-<script src="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js"></script>
+<link href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" rel="stylesheet"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
 body { font-family: Arial, sans-serif; background:#0f1923; }
@@ -185,143 +245,128 @@ body { font-family: Arial, sans-serif; background:#0f1923; }
     background:rgba(231,76,60,0.92); color:white; padding:5px 16px; border-radius:20px;
     font-size:11px; font-weight:700; z-index:10; animation:pulse 1.5s infinite; }
 @keyframes pulse { 0%,100% {opacity:1;} 50% {opacity:0.55;} }
-.mapboxgl-popup-content { background:rgba(15,25,35,0.96) !important; border:1px solid #ffffff33 !important;
-    border-radius:8px !important; color:white !important; padding:10px 14px !important; font-size:12px !important; }
+.leaflet-popup-content-wrapper { background:rgba(15,25,35,0.96) !important; border:1px solid #ffffff33 !important;
+    border-radius:8px !important; color:white !important; }
+.leaflet-popup-content { margin:10px 14px !important; font-size:12px !important; }
+.leaflet-popup-tip { background:rgba(15,25,35,0.96) !important; }
 .popup-title { font-weight:700; font-size:13px; margin-bottom:4px; }
 .popup-sub { color:#aaa; font-size:11px; }
+.vehicle-label { background:transparent !important; border:none !important; box-shadow:none !important;
+    color:#ffd060 !important; font-weight:700; font-size:11px; text-shadow:0 0 3px #0f1923, 0 0 3px #0f1923; }
+.vehicle-label::before { display:none !important; }
+.stop-tooltip { font-size:11px; }
 </style>
 </head>
 <body>
 <div id="map"></div>
-<div id="live-badge">&#9679; LIVE &#8212; __N_VEHICLES__ TRAMS</div>
+<div id="live-badge">&#9679; LIVE &#8212; __N_VEHICLES__ VEHICLES</div>
 <div id="controls">
     <button class="ctrl-btn active" id="btn-dark" onclick="setStyle('dark')">Dark</button>
     <button class="ctrl-btn" id="btn-light" onclick="setStyle('light')">Light</button>
     <button class="ctrl-btn" id="btn-satellite" onclick="setStyle('satellite')">Satellite</button>
-    <button class="ctrl-btn active" id="btn-3d" onclick="toggle3D()">3D Buildings</button>
 </div>
 <script>
-mapboxgl.accessToken = '__TOKEN__';
+// Free, unlimited, no-API-key raster tiles — CARTO basemaps + Esri World Imagery
+// (satellite). Leaflet (not MapLibre/Mapbox): see build_html()'s docstring in
+// simulation.py for why — MapLibre's worker never completes inside Streamlit's
+// component iframe, Leaflet has no such dependency.
+const TILE_URLS = {
+    dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    light: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+    satellite: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+};
+const TILE_ATTR = {
+    dark: '&copy; OpenStreetMap contributors &copy; CARTO',
+    light: '&copy; OpenStreetMap contributors &copy; CARTO',
+    satellite: 'Esri, Maxar, Earthstar Geographics',
+};
+
 const ROUTE_GEOJSON = __ROUTE_JSON__;
 const STOPS_GEOJSON = __STOPS_JSON__;
 const VEHICLES_GEOJSON = __VEHICLES_JSON__;
+const ZONE_GEOJSON = __ZONE_JSON__;
+const BOUNDS = __BOUNDS_JSON__;  // [[minLon,minLat],[maxLon,maxLat]] or null — GeoJSON order
 
-const map = new mapboxgl.Map({
-    container: 'map',
-    style: 'mapbox://styles/mapbox/dark-v11',
-    center: [-0.58, 44.85],
-    zoom: 11.3,
-    pitch: 45,
-    bearing: -10,
-});
-map.addControl(new mapboxgl.NavigationControl(), 'bottom-right');
+// A provisional center/zoom at construction time gives Leaflet a valid view to
+// project from immediately — calling fitBounds() beforehand (on a map with no
+// view yet, no tile layer yet) is what silently zoomed to max in testing.
+const map = L.map('map', { zoomControl: false, center: [44.85, -0.58], zoom: 11 });
+L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-let show3D = true;
-
+let currentTileLayer = null;
 function setStyle(name) {
-    const styles = {dark:'mapbox://styles/mapbox/dark-v11', light:'mapbox://styles/mapbox/light-v11',
-        satellite:'mapbox://styles/mapbox/satellite-streets-v12'};
-    map.setStyle(styles[name]);
-    ['btn-dark','btn-light','btn-satellite'].forEach(id => document.getElementById(id).classList.remove('active'));
-    document.getElementById('btn-'+name).classList.add('active');
-    map.once('style.load', addLayers);
+    if (currentTileLayer) map.removeLayer(currentTileLayer);
+    currentTileLayer = L.tileLayer(TILE_URLS[name], { attribution: TILE_ATTR[name], subdomains: 'abcd', maxZoom: 19 }).addTo(map);
+    ['btn-dark', 'btn-light', 'btn-satellite'].forEach(id => document.getElementById(id).classList.remove('active'));
+    document.getElementById('btn-' + name).classList.add('active');
+}
+setStyle('dark');
+
+map.whenReady(function () {
+    map.invalidateSize();
+    if (BOUNDS) {
+        map.fitBounds([[BOUNDS[0][1], BOUNDS[0][0]], [BOUNDS[1][1], BOUNDS[1][0]]], { padding: [40, 40] });
+    } else {
+        map.setView([__CENTER_LAT__, __CENTER_LON__], __ZOOM__);
+    }
+});
+
+if (ZONE_GEOJSON) {
+    L.geoJSON(ZONE_GEOJSON, {
+        style: { color: '#5dade2', weight: 2, dashArray: '6,4', fillColor: '#2980b9', fillOpacity: 0.08 },
+    }).addTo(map);
 }
 
-function toggle3D() {
-    show3D = !show3D;
-    document.getElementById('btn-3d').classList.toggle('active', show3D);
-    if (map.getLayer('3d-buildings')) map.setLayoutProperty('3d-buildings','visibility', show3D?'visible':'none');
-}
+// Route glow (wide, translucent) underneath the solid line — same two-pass trick as before.
+L.geoJSON(ROUTE_GEOJSON, { style: f => ({ color: f.properties.color, weight: 12, opacity: 0.15 }) }).addTo(map);
+L.geoJSON(ROUTE_GEOJSON, { style: f => ({ color: f.properties.color, weight: 4, opacity: 0.92 }) }).addTo(map);
 
-function addLayers() {
-    if (!map.getSource('route')) map.addSource('route', {type:'geojson', data:ROUTE_GEOJSON});
-    if (!map.getLayer('route-glow')) map.addLayer({
-        id:'route-glow', type:'line', source:'route',
-        layout:{'line-join':'round','line-cap':'round'},
-        paint:{'line-color':['get','color'],'line-width':14,'line-opacity':0.14,'line-blur':6}
-    });
-    if (!map.getLayer('route-line')) map.addLayer({
-        id:'route-line', type:'line', source:'route',
-        layout:{'line-join':'round','line-cap':'round'},
-        paint:{'line-color':['get','color'],'line-width':4.5,'line-opacity':0.92}
-    });
+L.geoJSON(STOPS_GEOJSON, {
+    pointToLayer: (feature, latlng) => {
+        const p = feature.properties;
+        return L.circleMarker(latlng, {
+            radius: p.interchange ? 9 : 5,
+            color: p.interchange ? '#1a1a1a' : '#ffffff',
+            weight: 2,
+            fillColor: p.interchange ? '#ffffff' : '#1abc9c',
+            fillOpacity: 0.95,
+        });
+    },
+    onEachFeature: (feature, layer) => {
+        const p = feature.properties;
+        layer.bindPopup('<div class="popup-title">' + p.name + '</div><div class="popup-sub">Line(s): ' + p.lines + '</div>');
+        layer.bindTooltip(p.name, { direction: 'top', className: 'stop-tooltip' });
+    },
+}).addTo(map);
 
-    if (!map.getSource('stops')) map.addSource('stops', {type:'geojson', data:STOPS_GEOJSON});
-    if (!map.getLayer('stops-circle')) map.addLayer({
-        id:'stops-circle', type:'circle', source:'stops',
-        paint:{
-            'circle-radius':['case',['get','interchange'],
-                ['interpolate',['linear'],['zoom'],10,6,13,10,16,16],
-                ['interpolate',['linear'],['zoom'],10,3.5,13,6,16,11]],
-            'circle-color':['case',['get','interchange'],'#ffffff','#1abc9c'],
-            'circle-stroke-color':['case',['get','interchange'],'#1a1a1a','#ffffff'],
-            'circle-stroke-width':2, 'circle-opacity':0.95
-        }
-    });
-    if (!map.getLayer('stops-label')) map.addLayer({
-        id:'stops-label', type:'symbol', source:'stops', minzoom:13,
-        layout:{'text-field':['get','name'],'text-font':['Open Sans Semibold','Arial Unicode MS Bold'],
-            'text-size':10.5,'text-offset':[0,-1.6],'text-anchor':'bottom'},
-        paint:{'text-color':'#ffffff','text-halo-color':'#0f1923','text-halo-width':1.5}
-    });
-
-    if (!map.getSource('vehicles')) map.addSource('vehicles', {type:'geojson', data:VEHICLES_GEOJSON});
-    if (!map.getLayer('vehicles-glow')) map.addLayer({
-        id:'vehicles-glow', type:'circle', source:'vehicles',
-        paint:{'circle-radius':['interpolate',['linear'],['zoom'],10,14,14,24,16,32],
-            'circle-color':['get','color'],'circle-opacity':0.22,'circle-blur':1}
-    });
-    if (!map.getLayer('vehicles-circle')) map.addLayer({
-        id:'vehicles-circle', type:'circle', source:'vehicles',
-        paint:{'circle-radius':['interpolate',['linear'],['zoom'],10,7,13,13,16,18],
-            'circle-color':['get','color'],'circle-stroke-color':'#ffffff','circle-stroke-width':2.5}
-    });
-    if (!map.getLayer('vehicles-label')) map.addLayer({
-        id:'vehicles-label', type:'symbol', source:'vehicles', minzoom:11,
-        layout:{'text-field':['get','label'],'text-font':['Open Sans Bold','Arial Unicode MS Bold'],
-            'text-size':11,'text-offset':[0,-2.2],'text-anchor':'bottom'},
-        paint:{'text-color':'#ffd060','text-halo-color':'#0f1923','text-halo-width':1.5}
-    });
-
-    if (!map.getLayer('3d-buildings')) map.addLayer({
-        id:'3d-buildings', source:'composite', 'source-layer':'building',
-        filter:['==','extrude','true'], type:'fill-extrusion', minzoom:13,
-        paint:{'fill-extrusion-color':'#1a2a3a','fill-extrusion-height':['get','height'],
-            'fill-extrusion-base':['get','min_height'],'fill-extrusion-opacity':0.7}
-    });
-
-    map.on('click','stops-circle', e => {
-        const p=e.features[0].properties, c=e.features[0].geometry.coordinates;
-        new mapboxgl.Popup({offset:12}).setLngLat(c)
-            .setHTML('<div class="popup-title">'+p.name+'</div><div class="popup-sub">Line(s): '+p.lines+'</div>')
-            .addTo(map);
-    });
-    map.on('click','vehicles-circle', e => {
-        const p=e.features[0].properties, c=e.features[0].geometry.coordinates;
-        new mapboxgl.Popup({offset:12}).setLngLat(c)
-            .setHTML('<div class="popup-title" style="color:'+p.color+'">'+p.label+'</div>'+
-                '<div class="popup-sub">Speed: '+p.speed+' km/h</div>'+
-                '<div class="popup-sub">Status: '+p.status+'</div>'+
-                '<div class="popup-sub">Direction: '+p.direction+'</div>'+
-                '<div class="popup-sub">GPS offset from track: '+p.offset+' m</div>')
-            .addTo(map);
-    });
-    map.on('mouseenter','stops-circle', () => map.getCanvas().style.cursor='pointer');
-    map.on('mouseleave','stops-circle', () => map.getCanvas().style.cursor='');
-    map.on('mouseenter','vehicles-circle', () => map.getCanvas().style.cursor='pointer');
-    map.on('mouseleave','vehicles-circle', () => map.getCanvas().style.cursor='');
-}
-
-map.on('load', addLayers);
+L.geoJSON(VEHICLES_GEOJSON, {
+    pointToLayer: (feature, latlng) => {
+        const p = feature.properties;
+        const marker = L.circleMarker(latlng, { radius: 9, color: '#ffffff', weight: 2.5, fillColor: p.color, fillOpacity: 1 });
+        marker.bindTooltip(p.label, { permanent: true, direction: 'top', offset: [0, -8], className: 'vehicle-label' });
+        marker.bindPopup(
+            '<div class="popup-title" style="color:' + p.color + '">' + p.label + '</div>' +
+            '<div class="popup-sub">Speed: ' + p.speed + ' km/h</div>' +
+            '<div class="popup-sub">Status: ' + p.status + '</div>' +
+            '<div class="popup-sub">Direction: ' + p.direction + '</div>' +
+            '<div class="popup-sub">GPS offset from track: ' + p.offset + ' m</div>'
+        );
+        return marker;
+    },
+}).addTo(map);
 </script>
 </body>
 </html>"""
 
-    html = template.replace("__TOKEN__", MAPBOX_TOKEN)
-    html = html.replace("__ROUTE_JSON__", route_json)
+    html = template.replace("__ROUTE_JSON__", route_json)
     html = html.replace("__STOPS_JSON__", stops_json)
     html = html.replace("__VEHICLES_JSON__", vehicles_json)
+    html = html.replace("__ZONE_JSON__", zone_json)
+    html = html.replace("__BOUNDS_JSON__", bounds_json)
     html = html.replace("__N_VEHICLES__", str(n_vehicles))
+    html = html.replace("__CENTER_LON__", str(center[0]))
+    html = html.replace("__CENTER_LAT__", str(center[1]))
+    html = html.replace("__ZOOM__", str(zoom))
     return html
 
 
@@ -330,7 +375,7 @@ def render():
         """<div style="background:linear-gradient(135deg,#1a1a2e,#2980b9);
             border-radius:12px;padding:20px 28px;margin-bottom:16px;color:white;">
             <div style="font-size:22px;font-weight:bold;">
-                Live Map &#8212; Bordeaux Tram Network (real GPS + map-matching)
+                Live Map &#8212; Bordeaux Transit Network (real GPS + map-matching)
             </div>
             <div style="font-size:12px;opacity:0.9;margin-top:5px;">
                 Real routes (GTFS shapes) &#183; Real stops (GTFS stops) &#183;
@@ -340,22 +385,31 @@ def render():
         unsafe_allow_html=True,
     )
 
-    lines_data = load_lines_data()
-    all_letters = list(lines_data.keys())  # ["A","B","C","D","E","F"]
+    lines_data, tram_keys, bus_keys, _zone_lines = load_lines_data()
 
-    selected = st.multiselect(
-        "Tram lines to show",
-        options=all_letters,
-        default=all_letters,
-        key="sim_selected_lines",
-        format_func=lambda l: f"Line {l}",
-    )
+    col_tram, col_bus = st.columns(2)
+    with col_tram:
+        show_tram = st.checkbox("🚋 Tram", value=True, key="sim_show_tram")
+        tram_codes = [lines_data[k]["code"] for k in tram_keys]
+        tram_selected_codes = st.multiselect(
+            "Tram lines", options=tram_codes, default=tram_codes,
+            key="sim_tram_lines", disabled=not show_tram, format_func=lambda c: f"Line {c}",
+        ) if show_tram else []
+    with col_bus:
+        show_bus = st.checkbox(f"🚌 Bus ({len(bus_keys)} lines serving configured zones)", value=True, key="sim_show_bus")
+        bus_codes = [lines_data[k]["code"] for k in bus_keys]
+        bus_selected_codes = st.multiselect(
+            "Bus lines", options=bus_codes, default=bus_codes,
+            key="sim_bus_lines", disabled=not show_bus,
+        ) if show_bus else []
+
+    selected = [f"tram:{c}" for c in tram_selected_codes] + [f"bus:{c}" for c in bus_selected_codes]
     if not selected:
         st.warning("Select at least one line to display the map.")
         return
 
-    route_to_letter = {lines_data[l]["route_id"]: l for l in selected}
-    raw_vehicles, error = fetch_raw_vehicles(tuple(route_to_letter.keys()))
+    route_to_key = {lines_data[k]["route_id"]: k for k in selected}
+    raw_vehicles, error = fetch_raw_vehicles(tuple(route_to_key.keys()))
 
     if error:
         st.error(f"Could not fetch live data: {error}")
@@ -363,7 +417,7 @@ def render():
         return
 
     raw_vehicles = raw_vehicles or []
-    vehicles = build_matched_vehicles(raw_vehicles, lines_data, route_to_letter)
+    vehicles = build_matched_vehicles(raw_vehicles, lines_data, route_to_key)
 
     route_geojson = build_route_geojson(selected, lines_data)
     stops_geojson = build_stops_geojson(selected, lines_data)
@@ -378,7 +432,7 @@ def render():
     total_stops = len(stops_geojson["features"])
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Lines shown", len(selected))
-    c2.metric("Active trams", len(vehicles))
+    c2.metric("Active vehicles", len(vehicles))
     c3.metric("Unique stops", total_stops)
     interchanges = sum(1 for f in stops_geojson["features"] if f["properties"]["interchange"])
     c4.metric("Interchange stops", interchanges)
@@ -386,15 +440,16 @@ def render():
     # ── Per-line breakdown ──
     st.subheader("Per-line breakdown")
     rows = []
-    for letter in selected:
-        line = lines_data[letter]
-        n_vehicles_line = sum(1 for v in vehicles if v["line"] == letter)
+    for key in selected:
+        line = lines_data[key]
+        n_vehicles_line = sum(1 for v in vehicles if v["line"] == key)
         rows.append({
-            "Line": letter,
+            "Mode": MODE_ICON[line["mode"]] + " " + line["mode"],
+            "Line": line["code"],
             "Color": line["color"],
             "Stops": len(line["stops"]),
             "Route points": len(line["outbound"]) + len(line["inbound"]),
-            "Active trams now": n_vehicles_line,
+            "Active vehicles now": n_vehicles_line,
         })
     import pandas as pd
     df = pd.DataFrame(rows)
@@ -415,7 +470,8 @@ def render():
         if vehicles:
             vrows = [{
                 "Vehicle": v["label"],
-                "Line": v["line"],
+                "Mode": MODE_ICON[v["mode"]] + " " + v["mode"],
+                "Line": v["code"],
                 "Matched lat": round(v["matched_lat"], 5),
                 "Matched lon": round(v["matched_lon"], 5),
                 "Offset (m)": v["offset_m"],
@@ -434,14 +490,19 @@ def render():
 1. Server polls `tbm_gtfs_rt_vehicles` (GTFS-RT) every ~25 seconds, cached with `st.cache_data(ttl=25)`
 2. Filters for the `route_id`(s) of the currently selected line(s)
 3. Each raw GPS fix is **map-matched** to its own line's route polyline
-   (built once from GTFS `shapes.txt` via `build_tram_lines.py`, run locally)
+   (built once from GTFS `shapes.txt` via `build_transit_lines.py`, run locally)
 4. Direction (outbound/inbound) is inferred from which side of the route the GPS point matches closer to
-5. Result is rendered on a Mapbox GL map, one color per line (official TBM `route_color`)
+5. Result is rendered on a Leaflet map (free CARTO/Esri tiles, no API key), one color per line
+
+Tram shows all 6 official lines (A-F). Bus only shows lines that serve at
+least one stop inside a configured zone (see `zones.py`) — TBM runs ~200 bus
+lines across the whole métropole, so the map stays focused instead of
+showing all of them.
 
 | Layer | Source dataset | Status |
 |-------|----------------|--------|
-| Route lines (A-F) | `tbm_gtfs_static` (shapes.txt) | Real, static |
-| Stops (A-F) | `tbm_gtfs_static` (stops.txt) | Real, static |
+| Route lines (tram + bus) | `tbm_gtfs_static` (shapes.txt) | Real, static |
+| Stops (tram + bus) | `tbm_gtfs_static` (stops.txt) | Real, static |
 | Vehicle positions | `tbm_gtfs_rt_vehicles` | Real, live, polled every 25s |
 | Ridership / passenger counts | — | **Not available** in TBM open data |
         """)
