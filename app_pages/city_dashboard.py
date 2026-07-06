@@ -48,9 +48,6 @@ MODES = {
         "collector": "collectors.traffic_collector",
         "source_note": "`pc_capte_p_histo_jour` — daily sensor counts, one row per sensor per day",
     },
-    "emission": {
-        "label": "Emission Estimate", "icon": "🌫️", "kind": "emission",
-    },
     "transit": {
         "label": "Tram & Bus", "icon": "🚋", "kind": "note",
         "note": "Tram and bus are **live + static only** — TBM's open data does not "
@@ -410,10 +407,6 @@ def _render_historical_section(zone_insee, zone_name):
         st.warning(note)
         return
 
-    if cfg["kind"] == "emission":
-        _render_emission_section(zone_insee, zone_name)
-        return
-
     with st.expander(f"⚙️ Fetch / update {cfg['label'].lower()} data"):
         st.caption(f"Source: {cfg['source_note']} · Zone: {zone_name}")
         days = st.slider("Days of history", 7, 365, 90, key=f"dash_{mode_key}_days")
@@ -458,6 +451,15 @@ def _render_historical_section(zone_insee, zone_name):
                        [["Location", "Sensor ID", f"Total {cfg['unit']}"]],
             use_container_width=True, hide_index=True,
         )
+
+    if mode_key == "car":
+        st.divider()
+        st.markdown("#### 🌫️ Estimated Emissions (from this traffic data)")
+        st.caption(
+            "A rule-based CO₂/NOx/PM estimate computed from the vehicle counts above — "
+            "not a separate data source or transport mode."
+        )
+        _render_emission_section(zone_insee, zone_name)
 
 
 def render():
