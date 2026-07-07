@@ -362,15 +362,6 @@ def _render_emission_section(zone_insee, zone_name):
     st.markdown("**Estimated daily CO₂ across the zone**")
     st.altair_chart(chart, use_container_width=True)
 
-    st.warning(
-        "⚠️ **Proof-of-concept estimate, not a calibrated physical model.** Assumptions: "
-        "constant vehicle speed, average European fleet mix, and a standard 1&nbsp;km "
-        "distance per vehicle pass (not actual road segment length). The CO₂ factor "
-        "(106.8 g/km) is the EEA's 2024 EU-wide average for *newly registered* passenger "
-        "cars (WLTP) — not the average of the full circulating fleet, which typically "
-        "runs higher. NOx/PM factors are placeholder EU-fleet averages pending further "
-        "verification against the EEA/EMEP Tier 1 Guidebook."
-    )
     if excluded_sensor_ids:
         st.caption(
             f"ℹ️ {len(excluded_sensor_ids)} sensor(s) excluded as statistical outliers "
