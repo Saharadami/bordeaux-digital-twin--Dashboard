@@ -8,7 +8,7 @@ pandas only, per emission_engine_spec.md §5.
 
 import pandas as pd
 
-from emissions.emission_factors import estimate_emissions
+from emissions.emission_factors import estimate_emissions, ENERGY_MJ_PER_KM, UNIT_DISTANCE_KM
 
 DATE_COL = "Date de comptage"
 SENSOR_COL = "ident"
@@ -26,7 +26,8 @@ OUTLIER_MEDIAN_MULTIPLIER = 10
 
 def compute_emissions(csv_path: str) -> pd.DataFrame:
     """Returns a DataFrame with columns [sensor_id, date, vehicle_count, CO2_g,
-    NOx_g, PM_g] — one row per (sensor, day), same granularity as the source CSV.
+    NOx_g, PM_g, Energy_MJ] — one row per (sensor, day), same granularity as
+    the source CSV.
 
     Rows flagged as statistical outliers (see OUTLIER_MEDIAN_MULTIPLIER) are
     excluded from the result so a single malfunctioning sensor can't dominate
@@ -50,5 +51,6 @@ def compute_emissions(csv_path: str) -> pd.DataFrame:
         "vehicle_count": df[VALUE_COL].values,
     })
     out = pd.concat([out, emissions.reset_index(drop=True)], axis=1)
+    out["Energy_MJ"] = df[VALUE_COL].values * ENERGY_MJ_PER_KM["car"] * UNIT_DISTANCE_KM
     out.attrs["excluded_sensor_ids"] = excluded_sensor_ids
     return out

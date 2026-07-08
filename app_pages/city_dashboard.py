@@ -19,6 +19,8 @@ from app_pages.simulation import (
     build_html as build_map_html, MODE_ICON,
 )
 from emissions.emissions_engine import compute_emissions, OUTLIER_MEDIAN_MULTIPLIER
+from emissions.bus_emissions_engine import compute_bus_emissions_for_zone
+from emissions.emission_factors import BUS_EMISSION_FACTORS_G_PER_KM, ENERGY_MJ_PER_KM
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 MOBILITY_DIR = os.path.join(DATA_DIR, "mobility")
@@ -27,11 +29,20 @@ TRAFFIC_DIR = os.path.join(DATA_DIR, "traffic")
 # ── Palette (dataviz skill reference palette, light mode) ──
 COLOR_BIKE = "#1baf7a"    # categorical slot 2 — aqua
 COLOR_CAR = "#2a78d6"     # categorical slot 1 — blue
+COLOR_BUS = "#e0791e"     # categorical slot 3 — amber
+COLOR_ENERGY = "#4a3aa7"  # categorical slot 5 — violet (kept off Bus's orange/Car's blue)
 INK_SECONDARY = "#52514e"
 INK_MUTED = "#898781"
 GRIDLINE = "#e1e0d9"
 BASELINE = "#c3c2b7"
 SURFACE = "#fcfcfb"
+
+# Network-wide totals from TBM's live GTFS static feed (routes.txt, route_type
+# 0=tram/3=bus), checked 2026-07-07 — used only to give the per-zone line
+# counts shown below some context ("N of ~TOTAL"). Approximate: TBM revises
+# its GTFS feed periodically, so these may drift slightly over time.
+TOTAL_TBM_TRAM_ROUTES = 6
+TOTAL_TBM_BUS_ROUTES = 194
 
 MODES = {
     "bike": {
@@ -48,10 +59,13 @@ MODES = {
         "collector": "collectors.traffic_collector",
         "source_note": "`pc_capte_p_histo_jour` — daily sensor counts, one row per sensor per day",
     },
-    "transit": {
-        "label": "Tram & Bus", "icon": "🚋", "kind": "note",
-        "note": "Tram and bus are **live + static only** — TBM's open data does not "
-                "expose historical vehicle positions or ridership. See the live map above.",
+    "tram": {
+        "label": "Tram", "icon": "🚋", "kind": "note",
+        "note": "Tram is **live + static only** — TBM's open data does not expose "
+                "historical vehicle positions or ridership for tram lines. See the live map above.",
+    },
+    "bus": {
+        "label": "Bus", "icon": "🚌", "kind": "bus_emission",
     },
     "pedestrian": {
         "label": "Pedestrians", "icon": "🚶", "kind": "note", "note": None,  # filled per-zone at render time
@@ -226,7 +240,76 @@ def _sensor_bar_chart(summary_df, color, unit, top_n=12):
     return (bars + labels).properties(height=max(160, len(d) * 30)).configure_view(strokeWidth=0)
 
 
+def _bus_line_bar_chart(per_line, color, top_n=14):
+    """Same ranked-horizontal-bar style as _sensor_bar_chart, applied to
+    per-line estimated daily CO2 (kg) instead of sensor totals."""
+    d = pd.DataFrame([
+        {"label": f"Line {r['code']}", "co2_kg": r["daily_km"] * BUS_EMISSION_FACTORS_G_PER_KM["CO2"] / 1000}
+        for r in per_line
+    ]).sort_values("co2_kg", ascending=False).head(top_n)
+
+    bars = alt.Chart(d).mark_bar(
+        color=color, size=16, cornerRadiusTopRight=4, cornerRadiusBottomRight=4,
+    ).encode(
+        y=alt.Y("label:N", sort="-x", title=None,
+                axis=alt.Axis(labelLimit=230, labelColor=INK_SECONDARY, domain=False, ticks=False)),
+        x=alt.X("co2_kg:Q", title=None,
+                axis=alt.Axis(grid=True, gridColor=GRIDLINE, domain=False, tickColor=BASELINE, labelColor=INK_MUTED, format="~s")),
+        tooltip=[alt.Tooltip("label:N", title="Line"), alt.Tooltip("co2_kg:Q", title="CO2 (kg/day)", format=",.0f")],
+    )
+    labels = alt.Chart(d).mark_text(align="left", dx=5, color=INK_SECONDARY, fontSize=11).encode(
+        y=alt.Y("label:N", sort="-x"),
+        x="co2_kg:Q",
+        text=alt.Text("co2_kg:Q", format=",.0f"),
+    )
+    return (bars + labels).properties(height=max(160, len(d) * 30)).configure_view(strokeWidth=0)
+
+
+def _energy_share_donut(car_mj, bus_mj):
+    """Two-slice donut — Car vs Bus share of combined daily energy. Colored
+    per-entity (same blue/amber as everywhere else Car/Bus appear) rather than
+    a generic ramp, so identity carries across every chart in this section.
+    Only two categories, so color alone is legible, but still direct-labelled
+    per the dataviz skill's series-count ladder (1-3 series -> direct-label)."""
+    total = car_mj + bus_mj
+    d = pd.DataFrame([{"mode": "Car", "mj": car_mj}, {"mode": "Bus", "mj": bus_mj}])
+    d["pct_label"] = (d["mj"] / total * 100).round(0).astype(int).astype(str) + "%"
+
+    color_scale = alt.Scale(domain=["Car", "Bus"], range=[COLOR_CAR, COLOR_BUS])
+    base = alt.Chart(d).encode(
+        theta=alt.Theta("mj:Q", stack=True),
+        color=alt.Color("mode:N", scale=color_scale, legend=alt.Legend(title=None, orient="bottom", labelColor=INK_SECONDARY)),
+        tooltip=[alt.Tooltip("mode:N", title="Mode"), alt.Tooltip("mj:Q", title="MJ/day", format=",.0f")],
+    )
+    arc = base.mark_arc(innerRadius=58, outerRadius=104, stroke=SURFACE, strokeWidth=2)
+    labels = base.mark_text(radius=128, size=13, color=INK_SECONDARY, fontWeight=600).encode(text="pct_label:N")
+    return (arc + labels).properties(height=240).configure_view(strokeWidth=0)
+
+
+def _energy_intensity_bar(car_mj_per_km, bus_mj_per_km):
+    """Two-bar horizontal comparison — energy intensity (MJ/km), same
+    ranked-bar style as the other charts, colored per-entity so it reads as
+    the deliberate counterpoint to the donut beside it: Car dominates total
+    share, Bus dominates per-km intensity."""
+    d = pd.DataFrame([{"mode": "Car", "mj_per_km": car_mj_per_km}, {"mode": "Bus", "mj_per_km": bus_mj_per_km}])
+    color_scale = alt.Scale(domain=["Car", "Bus"], range=[COLOR_CAR, COLOR_BUS])
+
+    bars = alt.Chart(d).mark_bar(size=34, cornerRadiusTopRight=4, cornerRadiusBottomRight=4).encode(
+        y=alt.Y("mode:N", sort=None, title=None,
+                axis=alt.Axis(labelColor=INK_SECONDARY, domain=False, ticks=False, labelFontSize=13)),
+        x=alt.X("mj_per_km:Q", title=None,
+                axis=alt.Axis(grid=True, gridColor=GRIDLINE, domain=False, tickColor=BASELINE, labelColor=INK_MUTED)),
+        color=alt.Color("mode:N", scale=color_scale, legend=None),
+        tooltip=[alt.Tooltip("mode:N", title="Mode"), alt.Tooltip("mj_per_km:Q", title="MJ/km", format=".2f")],
+    )
+    labels = alt.Chart(d).mark_text(align="left", dx=6, color=INK_SECONDARY, fontSize=12).encode(
+        y=alt.Y("mode:N", sort=None), x="mj_per_km:Q", text=alt.Text("mj_per_km:Q", format=".2f"),
+    )
+    return (bars + labels).properties(height=150).configure_view(strokeWidth=0)
+
+
 def _render_map_section(zone_insee):
+    zone_name = ZONES[zone_insee]["name"]
     lines_data, _all_tram_keys, _all_bus_keys, zone_lines = load_lines_data()
     zl = zone_lines.get(zone_insee, {"tram": [], "bus": []})
     tram_keys, bus_keys = zl["tram"], zl["bus"]
@@ -239,14 +322,20 @@ def _render_map_section(zone_insee):
     # map light; the visitor opts into more via the multiselect.
     col_a, col_b = st.columns(2)
     with col_a:
-        show_tram = st.checkbox(f"🚋 Tram ({len(tram_keys)} lines here)", value=True, key=f"dash_show_tram_{zone_insee}")
+        show_tram = st.checkbox(
+            f"🚋 Tram ({len(tram_keys)} of ~{TOTAL_TBM_TRAM_ROUTES} TBM tram lines serving {zone_name})",
+            value=True, key=f"dash_show_tram_{zone_insee}",
+        )
         tram_codes = [lines_data[k]["code"] for k in tram_keys]
         tram_sel = st.multiselect(
             "Tram lines", options=tram_codes, default=tram_codes[:1],
             key=f"dash_tram_lines_{zone_insee}", disabled=not show_tram, format_func=lambda c: f"Line {c}",
         ) if show_tram else []
     with col_b:
-        show_bus = st.checkbox(f"🚌 Bus ({len(bus_keys)} lines here)", value=True, key=f"dash_show_bus_{zone_insee}")
+        show_bus = st.checkbox(
+            f"🚌 Bus ({len(bus_keys)} of ~{TOTAL_TBM_BUS_ROUTES} TBM bus routes serving {zone_name})",
+            value=True, key=f"dash_show_bus_{zone_insee}",
+        )
         bus_codes = [lines_data[k]["code"] for k in bus_keys]
         bus_sel = st.multiselect(
             "Bus lines", options=bus_codes, default=bus_codes[:1],
@@ -379,6 +468,131 @@ def _render_emission_section(zone_insee, zone_name):
         )
 
 
+def _render_bus_emission_section(zone_insee, zone_name):
+    """Rule-based CO2/NOx/PM estimate for the zone's bus network on one
+    representative weekday — from the *scheduled* GTFS timetable (trips.txt +
+    calendar.txt), not live vehicle counts. See emissions/bus_emissions_engine.py."""
+    result = compute_bus_emissions_for_zone(zone_insee)
+    if result is None:
+        st.info(f"No bus lines are mapped for {zone_name} yet — see the live map above.")
+        return
+    if result["total_km"] <= 0:
+        st.info("No scheduled weekday bus trips found for this zone's lines.")
+        return
+
+    st.caption(
+        f"Based on the official GTFS schedule for a typical weekday (Mon–Fri service) — "
+        f"a single-day estimate, not a historical trend. Showing "
+        f"**{len(result['per_line'])} of ~{TOTAL_TBM_BUS_ROUTES} TBM bus routes** serving {zone_name}."
+    )
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Estimated daily CO₂", f"{_compact(result['CO2_g'] / 1000)} kg")
+    c2.metric("Estimated daily NOx", f"{_compact(result['NOx_g'])} g")
+    c3.metric("Estimated daily PM", f"{_compact(result['PM_g'])} g")
+
+    # Comparison against this zone's Car Traffic emission estimate, if that
+    # section has already fetched/computed data for the same zone — silently
+    # omitted (not an error) when no car traffic CSV exists yet for this zone.
+    car_latest = _latest_csv(TRAFFIC_DIR, zone_slug=zone_name.lower())
+    if car_latest:
+        car_df = compute_emissions(car_latest)
+        if not car_df.empty:
+            period_options = {"Last 7 days": 7, "Last 30 days": 30, "Last 90 days": 90, "All available": None}
+            period_label = st.session_state.get("dash_emission_period", "Last 90 days")
+            days_back = period_options.get(period_label)
+            if days_back:
+                cutoff = car_df["date"].max() - pd.Timedelta(days=days_back)
+                car_df = car_df[car_df["date"] >= cutoff]
+            car_co2_g = car_df["CO2_g"].sum()
+            n_days = car_df["date"].dt.floor("D").nunique()
+            if car_co2_g > 0 and n_days > 0:
+                car_daily_co2_g = car_co2_g / n_days
+                pct = result["CO2_g"] / car_daily_co2_g * 100
+                st.caption(
+                    f"≈ **{pct:.1f}%** of this zone's estimated daily car traffic CO₂"
+                )
+
+    st.markdown("**Bus lines by estimated daily CO₂**")
+    st.altair_chart(_bus_line_bar_chart(result["per_line"], COLOR_BUS), use_container_width=True)
+
+    st.markdown("**Per-line breakdown**")
+    rows = [{
+        "Line": r["code"],
+        "Daily trips": r["daily_trips"],
+        "Route length (km)": round(r["length_km"], 2),
+        "Daily km": round(r["daily_km"], 1),
+        "Energy (MJ)": round(r["daily_km"] * ENERGY_MJ_PER_KM["bus"], 1),
+        "Energy per Trip (MJ)": (
+            round(r["daily_km"] * ENERGY_MJ_PER_KM["bus"] / r["daily_trips"], 2) if r["daily_trips"] > 0 else 0
+        ),
+        "Share of total emission": f"{r['share_pct']:.1f}%",
+    } for r in result["per_line"]]
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+
+def _render_energy_section(zone_insee, zone_name):
+    """Combined Car vs Bus daily energy consumption (MJ) for this zone — see
+    emission_factors.ENERGY_MJ_PER_KM. This is a cross-mode comparison (not
+    specific to Car or Bus), so it renders identically whichever mode it's
+    called from — see the two call sites in _render_historical_section."""
+    car_latest = _latest_csv(TRAFFIC_DIR, zone_slug=zone_name.lower())
+    bus_result = compute_bus_emissions_for_zone(zone_insee)
+    if not car_latest or bus_result is None or bus_result["total_km"] <= 0:
+        st.info(
+            "Energy Consumption needs both Car Traffic data and a mapped bus network "
+            "for this zone — fetch Car Traffic data above if you haven't yet."
+        )
+        return
+
+    car_df = compute_emissions(car_latest)
+    if car_df.empty:
+        st.info("No usable car traffic data to estimate energy from.")
+        return
+    period_options = {"Last 7 days": 7, "Last 30 days": 30, "Last 90 days": 90, "All available": None}
+    period_label = st.session_state.get("dash_emission_period", "Last 90 days")
+    days_back = period_options.get(period_label)
+    if days_back:
+        cutoff = car_df["date"].max() - pd.Timedelta(days=days_back)
+        car_df = car_df[car_df["date"] >= cutoff]
+    n_days = car_df["date"].dt.floor("D").nunique()
+    if car_df.empty or n_days == 0:
+        st.info("No car traffic data in the selected period to estimate energy from.")
+        return
+
+    car_daily_mj = car_df["Energy_MJ"].sum() / n_days
+    bus_daily_mj = bus_result["Energy_MJ"]
+    combined_mj = car_daily_mj + bus_daily_mj
+
+    st.divider()
+    st.markdown(
+        f'#### <span style="color:{COLOR_ENERGY};">⚡ Energy Consumption</span>',
+        unsafe_allow_html=True,
+    )
+    st.caption("Energy factors: ODYSSEE-MURE (car, EU27 2023), independent industry estimates (bus).")
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Total Daily Energy (Car)", f"{_compact(car_daily_mj)} MJ/day")
+    c2.metric("Total Daily Energy (Bus)", f"{_compact(bus_daily_mj)} MJ/day")
+    c3.metric("Combined Daily Energy", f"{_compact(combined_mj / 1000)} GJ/day")
+
+    col_donut, col_bar = st.columns(2)
+    with col_donut:
+        st.markdown("**Share of Total Daily Energy**")
+        st.altair_chart(_energy_share_donut(car_daily_mj, bus_daily_mj), use_container_width=True)
+    with col_bar:
+        st.markdown("**Energy Intensity per km**")
+        st.altair_chart(
+            _energy_intensity_bar(ENERGY_MJ_PER_KM["car"], ENERGY_MJ_PER_KM["bus"]),
+            use_container_width=True,
+        )
+
+    st.caption(
+        "Private cars dominate total daily energy use simply by volume of traffic — "
+        "even though each bus burns far more energy per kilometer than each car."
+    )
+
+
 def _render_historical_section(zone_insee, zone_name):
     mode_key = st.selectbox(
         "Mode", options=list(MODES.keys()),
@@ -386,6 +600,11 @@ def _render_historical_section(zone_insee, zone_name):
         key="dash_hist_mode",
     )
     cfg = MODES[mode_key]
+
+    if cfg["kind"] == "bus_emission":
+        _render_bus_emission_section(zone_insee, zone_name)
+        _render_energy_section(zone_insee, zone_name)
+        return
 
     if cfg["kind"] == "note":
         note = cfg["note"]
@@ -451,6 +670,7 @@ def _render_historical_section(zone_insee, zone_name):
             "not a separate data source or transport mode."
         )
         _render_emission_section(zone_insee, zone_name)
+        _render_energy_section(zone_insee, zone_name)
 
 
 def render():

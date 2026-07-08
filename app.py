@@ -26,8 +26,19 @@ h3 { font-size: 21px !important; font-weight: 700 !important; }
     font-weight: 700 !important;
 }
 
+/* Streamlit's default caption is opacity:0.6 + 14px, which reads as faded —
+   raise both legibility knobs directly rather than just bumping font-size. */
 [data-testid="stCaptionContainer"] {
-    font-size: 14px !important;
+    font-size: 15px !important;
+    opacity: 0.85 !important;
+}
+[data-testid="stCaptionContainer"] p {
+    color: rgb(35, 35, 40) !important;
+}
+
+[data-testid="stMetricLabel"] p {
+    font-size: 16px !important;
+    font-weight: 650 !important;
 }
 </style>
 """, unsafe_allow_html=True)
