@@ -99,6 +99,16 @@ def _compact(n):
     return f"{n:.0f}"
 
 
+def _compact_signed(n, unit):
+    """None for ~zero so st.metric shows no delta pill at the scenario baseline
+    — a literal "+0" would still read as a (red, under delta_color=inverse)
+    positive change, which is misleading for "no change"."""
+    if abs(n) < 1e-9:
+        return None
+    sign = "+" if n >= 0 else "-"
+    return f"{sign}{_compact(abs(n))} {unit}"
+
+
 def _load_sensor_summary(mode_key, zone_insee, days_back=None):
     """Per-sensor totals for the period — the street/location detail a single
     zone-wide daily sum throws away. Returns (DataFrame[ident,label,lat,lon,total],
@@ -608,6 +618,77 @@ def _render_energy_section(zone_insee, zone_name):
         "Private cars dominate total daily energy use simply by volume of traffic — "
         "even though each bus burns far more energy per kilometer than each car."
     )
+
+    with st.expander("🔧 What-if Scenarios", expanded=False):
+        st.caption("Simple rule-based projections — linear scaling, not a calibrated simulation.")
+
+        st.markdown("**Traffic Change**")
+        traffic_pct = st.slider(
+            "Traffic Change", min_value=-50, max_value=50, value=0, step=5,
+            format="%d%%", key=f"dash_whatif_traffic_{zone_insee}",
+        )
+        traffic_factor = 1 + traffic_pct / 100
+
+        car_co2_g = car_df["CO2_g"].sum()
+        car_nox_g = car_df["NOx_g"].sum()
+        car_pm_g = car_df["PM_g"].sum()
+        car_energy_mj = car_df["Energy_MJ"].sum()
+
+        t1, t2, t3, t4 = st.columns(4)
+        t1.metric(
+            "CO₂", f"{_compact(car_co2_g * traffic_factor / 1000)} kg",
+            delta=_compact_signed((car_co2_g * traffic_factor - car_co2_g) / 1000, "kg"),
+            delta_color="inverse",
+        )
+        t2.metric(
+            "NOx", f"{_compact(car_nox_g * traffic_factor)} g",
+            delta=_compact_signed(car_nox_g * traffic_factor - car_nox_g, "g"),
+            delta_color="inverse",
+        )
+        t3.metric(
+            "PM", f"{_compact(car_pm_g * traffic_factor)} g",
+            delta=_compact_signed(car_pm_g * traffic_factor - car_pm_g, "g"),
+            delta_color="inverse",
+        )
+        t4.metric(
+            "Energy", f"{_compact(car_energy_mj * traffic_factor)} MJ",
+            delta=_compact_signed(car_energy_mj * traffic_factor - car_energy_mj, "MJ"),
+            delta_color="inverse",
+        )
+
+        st.divider()
+
+        st.markdown("**Bus Fleet Electrification**")
+        electrification_pct = st.slider(
+            "Bus Fleet Electrification", min_value=0, max_value=100, value=0, step=10,
+            format="%d%%", key=f"dash_whatif_electrification_{zone_insee}",
+        )
+        st.caption(
+            "Electric bus energy consumption is not modeled in this simple scenario — "
+            "only tailpipe CO2/NOx/PM reduction is shown here."
+        )
+        remaining_factor = 1 - electrification_pct / 100
+
+        bus_co2_g = bus_result["CO2_g"]
+        bus_nox_g = bus_result["NOx_g"]
+        bus_pm_g = bus_result["PM_g"]
+
+        b1, b2, b3 = st.columns(3)
+        b1.metric(
+            "Bus CO₂", f"{_compact(bus_co2_g * remaining_factor / 1000)} kg",
+            delta=_compact_signed((bus_co2_g * remaining_factor - bus_co2_g) / 1000, "kg"),
+            delta_color="inverse",
+        )
+        b2.metric(
+            "Bus NOx", f"{_compact(bus_nox_g * remaining_factor)} g",
+            delta=_compact_signed(bus_nox_g * remaining_factor - bus_nox_g, "g"),
+            delta_color="inverse",
+        )
+        b3.metric(
+            "Bus PM", f"{_compact(bus_pm_g * remaining_factor)} g",
+            delta=_compact_signed(bus_pm_g * remaining_factor - bus_pm_g, "g"),
+            delta_color="inverse",
+        )
 
 
 def _render_historical_section(zone_insee, zone_name):
