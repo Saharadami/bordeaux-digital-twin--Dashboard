@@ -565,6 +565,23 @@ def _render_energy_section(zone_insee, zone_name):
     combined_mj = car_daily_mj + bus_daily_mj
 
     st.divider()
+    col_diagram, col_info = st.columns([20, 1])
+    with col_diagram:
+        st.markdown(
+            f'<div style="text-align:center; font-size:17px; font-weight:600; '
+            f'color:{INK_SECONDARY}; padding:6px 0 2px 0;">'
+            f'🚗🚌 Traffic Count &nbsp;→&nbsp; ⛽ Energy Consumption &nbsp;→&nbsp; 🌫️ CO₂ / NOx / PM'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+    with col_info:
+        with st.popover("ℹ️"):
+            st.write(
+                "This Traffic → Energy → Emissions pathway extends the Mobility → generates "
+                "→ AirQuality relationship already documented in the project's Ontology (Data "
+                "Model & Ontology tab), adding an explicit Energy step in between."
+            )
+
     st.markdown(
         f'#### <span style="color:{COLOR_ENERGY};">⚡ Energy Consumption</span>',
         unsafe_allow_html=True,
