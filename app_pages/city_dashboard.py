@@ -362,9 +362,20 @@ def _render_heatmap_section(zone_insee, zone_name):
     same yellow-to-red scale. Both reuse already-computed pollutant totals
     (emissions_engine.py / bus_emissions_engine.py) joined with geometry
     already used elsewhere — see emissions/spatial_heatmap_data.py."""
-    pollutant = st.selectbox(
-        "Pollutant", options=list(POLLUTANTS), index=0, key="dash_heatmap_pollutant",
-    )
+    col_pollutant, col_car, col_bus = st.columns([2, 1, 1])
+    with col_pollutant:
+        pollutant = st.selectbox(
+            "Pollutant", options=list(POLLUTANTS), index=0, key="dash_heatmap_pollutant",
+        )
+    with col_car:
+        show_car = st.checkbox("🚗 Show Car Heatmap", value=True, key="dash_heatmap_show_car")
+    with col_bus:
+        show_bus = st.checkbox("🚌 Show Bus Lines", value=True, key="dash_heatmap_show_bus")
+
+    if not show_car and not show_bus:
+        st.info("Select at least one layer to display.")
+        return
+
     st.caption(
         "Since CO2/NOx/PM are all proportional to the same vehicle count, the "
         "relative pattern (which roads/lines are worst) is identical for all three "
@@ -372,9 +383,14 @@ def _render_heatmap_section(zone_insee, zone_name):
     )
     unit = "kg" if pollutant == "CO2" else "g"
 
-    car_latest = _latest_csv(TRAFFIC_DIR, zone_slug=zone_name.lower())
-    car_points = car_heatmap_points(car_latest, pollutant) if car_latest else []
-    bus_lines = bus_emission_lines(zone_insee, pollutant)
+    car_points = []
+    if show_car:
+        car_latest = _latest_csv(TRAFFIC_DIR, zone_slug=zone_name.lower())
+        car_points = car_heatmap_points(car_latest, pollutant) if car_latest else []
+
+    bus_lines = []
+    if show_bus:
+        bus_lines = bus_emission_lines(zone_insee, pollutant)
 
     if pollutant == "CO2":
         car_points = [{**p, "intensity": p["intensity"] / 1000} for p in car_points]
@@ -387,11 +403,13 @@ def _render_heatmap_section(zone_insee, zone_name):
         )
         return
 
-    st.caption(
-        f"**{len(car_points)} car sensors** (total {pollutant} over the whole fetched "
-        f"period) · **{len(bus_lines)} bus lines** (estimated daily {pollutant}) — "
-        f"same yellow-to-red scale for both, since this shows intensity, not line identity."
-    )
+    caption_parts = []
+    if show_car:
+        caption_parts.append(f"**{len(car_points)} car sensors** (total {pollutant} over the whole fetched period)")
+    if show_bus:
+        caption_parts.append(f"**{len(bus_lines)} bus lines** (estimated daily {pollutant})")
+    tail = " — same yellow-to-red scale for both, since this shows intensity, not line identity." if show_car and show_bus else ""
+    st.caption(" · ".join(caption_parts) + tail)
 
     boundary = get_zone_boundary(zone_insee)
     bounds = get_zone_bounds(zone_insee)
