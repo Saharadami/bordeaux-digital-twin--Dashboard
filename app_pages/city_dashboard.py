@@ -21,6 +21,7 @@ from app_pages.simulation import (
 from emissions.emissions_engine import compute_emissions, OUTLIER_MEDIAN_MULTIPLIER
 from emissions.bus_emissions_engine import compute_bus_emissions_for_zone
 from emissions.emission_factors import BUS_EMISSION_FACTORS_G_PER_KM, ENERGY_MJ_PER_KM
+from forecasting.traffic_forecasting_engine import forecast_traffic
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 MOBILITY_DIR = os.path.join(DATA_DIR, "mobility")
@@ -316,6 +317,81 @@ def _energy_intensity_bar(car_mj_per_km, bus_mj_per_km):
         y=alt.Y("mode:N", sort=None), x="mj_per_km:Q", text=alt.Text("mj_per_km:Q", format=".2f"),
     )
     return (bars + labels).properties(height=150).configure_view(strokeWidth=0)
+
+
+def _forecast_chart(df, color):
+    """Solid line for actual history, dashed line for the 7-day forecast, and
+    a shaded uncertainty band around the forecast only (history is observed,
+    not uncertain). The two line segments share their first/last point (the
+    engine duplicates the last actual day as the first forecast row) so they
+    connect with no visual gap."""
+    actual = df[df["kind"] == "actual"]
+    forecast = df[df["kind"] == "forecast"]
+
+    band = alt.Chart(forecast).mark_area(opacity=0.15, color=color).encode(
+        x=alt.X("date:T", title=None),
+        y=alt.Y("lower:Q", title=None),
+        y2=alt.Y2("upper:Q"),
+    )
+    actual_line = alt.Chart(actual).mark_line(color=color, strokeWidth=2).encode(
+        x=alt.X("date:T", title=None,
+                axis=alt.Axis(grid=False, domainColor=BASELINE, tickColor=BASELINE, labelColor=INK_MUTED)),
+        y=alt.Y("value:Q", title=None,
+                axis=alt.Axis(grid=True, gridColor=GRIDLINE, domain=False, tickColor=BASELINE, labelColor=INK_MUTED, format="~s")),
+        tooltip=[alt.Tooltip("date:T", title="Date", format="%b %d, %Y"), alt.Tooltip("value:Q", title="Actual", format=",.0f")],
+    )
+    forecast_line = alt.Chart(forecast).mark_line(color=color, strokeWidth=2, strokeDash=[5, 4]).encode(
+        x="date:T", y="value:Q",
+        tooltip=[alt.Tooltip("date:T", title="Date", format="%b %d, %Y"), alt.Tooltip("value:Q", title="Forecast", format=",.0f")],
+    )
+    return (band + actual_line + forecast_line).properties(height=280).configure_view(strokeWidth=0)
+
+
+def _render_forecast_section(zone_insee, zone_name):
+    """Rule-based 7-day traffic forecast — linear trend + day-of-week OLS
+    regression, no ML (see forecasting/traffic_forecasting_engine.py). Only
+    Car Traffic and Bike have daily historical data to forecast from."""
+    forecast_mode_keys = [k for k in ("car", "bike") if k in MODES]
+    mode_key = st.selectbox(
+        "Mode", options=forecast_mode_keys,
+        format_func=lambda k: f"{MODES[k]['icon']} {MODES[k]['label']}",
+        key="dash_forecast_mode",
+    )
+    cfg = MODES[mode_key]
+    latest = _latest_csv(cfg["dir"], zone_slug=zone_name.lower())
+    if not latest:
+        st.info(
+            f"No {cfg['label'].lower()} data for {zone_name} yet — fetch it from the "
+            f"{cfg['icon']} {cfg['label']} mode in Mobility Historical first."
+        )
+        return
+
+    try:
+        result = forecast_traffic(latest, cfg["date_col"], cfg["value_col"], horizon_days=7)
+    except ValueError as e:
+        st.info(str(e))
+        return
+
+    n_history_days = result.attrs.get("n_history_days", 0)
+    st.caption(
+        f"Simple linear model (trend + day-of-week), fit on **{n_history_days} days** of "
+        f"history for {zone_name} · 7-day forecast, shaded band ≈ 90% uncertainty range — "
+        f"not a calibrated prediction, just a rule-based projection from limited data."
+    )
+
+    st.markdown(f"**{cfg['label']} — daily total, actual vs 7-day forecast**")
+    st.altair_chart(_forecast_chart(result, cfg["color"]), use_container_width=True)
+
+    with st.expander("📋 Forecast values"):
+        show = result[result["kind"] == "forecast"].iloc[1:].copy()
+        show["date"] = show["date"].dt.strftime("%Y-%m-%d (%a)")
+        show = show.rename(columns={
+            "date": "Date", "value": "Forecast", "lower": "Lower bound", "upper": "Upper bound",
+        })
+        st.dataframe(
+            show[["Date", "Forecast", "Lower bound", "Upper bound"]].round(1),
+            use_container_width=True, hide_index=True,
+        )
 
 
 def _render_map_section(zone_insee):
@@ -788,7 +864,12 @@ def render():
         unsafe_allow_html=True,
     )
 
-    _render_map_section(zone_insee)
-    st.divider()
-    st.markdown("### 📊 Historical trends")
-    _render_historical_section(zone_insee, zone_name)
+    tab_map, tab_hist, tab_forecast = st.tabs([
+        "🚋 Tram Live Map", "📊 Mobility Historical", "🔮 Forecast & Simulation",
+    ])
+    with tab_map:
+        _render_map_section(zone_insee)
+    with tab_hist:
+        _render_historical_section(zone_insee, zone_name)
+    with tab_forecast:
+        _render_forecast_section(zone_insee, zone_name)
