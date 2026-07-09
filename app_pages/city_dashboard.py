@@ -365,6 +365,11 @@ def _render_heatmap_section(zone_insee, zone_name):
     pollutant = st.selectbox(
         "Pollutant", options=list(POLLUTANTS), index=0, key="dash_heatmap_pollutant",
     )
+    st.caption(
+        "Since CO2/NOx/PM are all proportional to the same vehicle count, the "
+        "relative pattern (which roads/lines are worst) is identical for all three "
+        "pollutants — only the absolute values differ."
+    )
     unit = "kg" if pollutant == "CO2" else "g"
 
     car_latest = _latest_csv(TRAFFIC_DIR, zone_slug=zone_name.lower())
