@@ -22,6 +22,7 @@ from emissions.emissions_engine import compute_emissions, OUTLIER_MEDIAN_MULTIPL
 from emissions.bus_emissions_engine import compute_bus_emissions_for_zone
 from emissions.emission_factors import BUS_EMISSION_FACTORS_G_PER_KM, ENERGY_MJ_PER_KM
 from forecasting.traffic_forecasting_engine import forecast_traffic
+from emissions.spatial_heatmap_data import car_heatmap_points, bus_emission_lines, POLLUTANTS
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 MOBILITY_DIR = os.path.join(DATA_DIR, "mobility")
@@ -225,6 +226,172 @@ map.whenReady(function () {
     html = html.replace("__BOUNDS__", json.dumps(bounds))
     html = html.replace("__COLOR__", color)
     return html
+
+
+# ColorBrewer "YlOrRd" sequential ramp — shared by the Car heat layer's
+# gradient and the Bus lines' per-line color, so both encode intensity on the
+# exact same scale (this tab is about *how much*, not *which line is which*,
+# so official route colors are deliberately not used here).
+_HEAT_RAMP = [
+    (0.00, (255, 255, 178)),  # #ffffb2
+    (0.25, (254, 204, 92)),   # #fecc5c
+    (0.50, (253, 141, 60)),   # #fd8d3c
+    (0.75, (240, 59, 32)),    # #f03b20
+    (1.00, (189, 0, 38)),     # #bd0026
+]
+
+
+def _yellow_red_hex(frac):
+    frac = max(0.0, min(1.0, frac))
+    for (f0, c0), (f1, c1) in zip(_HEAT_RAMP, _HEAT_RAMP[1:]):
+        if f0 <= frac <= f1:
+            t = (frac - f0) / (f1 - f0) if f1 > f0 else 0.0
+            rgb = tuple(round(c0[i] + (c1[i] - c0[i]) * t) for i in range(3))
+            return "#{:02x}{:02x}{:02x}".format(*rgb)
+    return "#{:02x}{:02x}{:02x}".format(*_HEAT_RAMP[-1][1])
+
+
+def _heatmap_html(car_points, bus_lines, boundary_geojson, bounds, pollutant_label, unit):
+    max_car = max((p["intensity"] for p in car_points), default=1.0) or 1.0
+    bus_values = [ln["value"] for ln in bus_lines]
+    min_bus, max_bus = (min(bus_values), max(bus_values)) if bus_values else (0.0, 1.0)
+
+    bus_features = []
+    for ln in bus_lines:
+        frac = (ln["value"] - min_bus) / (max_bus - min_bus) if max_bus > min_bus else 0.5
+        bus_features.append({
+            "code": ln["code"], "coords": ln["coords"], "value": ln["value"],
+            "color": _yellow_red_hex(frac),
+        })
+
+    heat_points = [[p["lat"], p["lon"], p["intensity"]] for p in car_points]
+
+    template = """<!DOCTYPE html>
+<html><head><meta charset="utf-8"/>
+<link href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" rel="stylesheet"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+html, body { height:100%; }
+#map { width:100%; height:480px; background:#0f1923; }
+.leaflet-popup-content-wrapper { background:rgba(15,25,35,0.96) !important; border:1px solid #ffffff33 !important; border-radius:8px !important; color:white !important; }
+.leaflet-popup-content { margin:9px 12px !important; font-size:12px !important; }
+.leaflet-popup-tip { background:rgba(15,25,35,0.96) !important; }
+</style></head>
+<body>
+<div id="map"></div>
+<script>
+const HEAT_POINTS = __HEAT_POINTS__;
+const MAX_CAR = __MAX_CAR__;
+const BUS_FEATURES = __BUS_FEATURES__;
+const ZONE_GEOJSON = __ZONE_JSON__;
+const BOUNDS = __BOUNDS_JSON__;
+const POLLUTANT = "__POLLUTANT__";
+const UNIT = "__UNIT__";
+
+const map = L.map('map', { zoomControl: false, center: [44.85, -0.58], zoom: 12 });
+L.control.zoom({ position: 'bottomright' }).addTo(map);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; OpenStreetMap contributors &copy; CARTO', subdomains: 'abcd', maxZoom: 19,
+}).addTo(map);
+
+if (ZONE_GEOJSON) {
+    L.geoJSON(ZONE_GEOJSON, {
+        style: { color: '#5dade2', weight: 2, dashArray: '6,4', fillColor: '#2980b9', fillOpacity: 0.08 },
+    }).addTo(map);
+}
+
+BUS_FEATURES.forEach(function (f) {
+    const line = L.polyline(f.coords, { color: f.color, weight: 4, opacity: 0.85 }).addTo(map);
+    line.bindPopup('<b>Bus line ' + f.code + '</b><br/>' + Math.round(f.value).toLocaleString() + ' ' + UNIT + ' ' + POLLUTANT + '/day');
+});
+
+// Streamlit's st.tabs() renders every tab's components on every script run —
+// hidden tabs are just display:none, not unmounted — so this iframe can load
+// while genuinely 0x0 (whichever tab happens to be active first). Calling
+// fitBounds()/adding the heat layer against a 0x0 container gives a bogus
+// zoom (or a canvas the browser refuses to draw to), and invalidateSize()
+// alone does not fix a *wrong* zoom already chosen from bad dimensions — so
+// wait for a real, non-zero size via ResizeObserver (fires exactly when the
+// tab becomes visible, however long that takes) before doing any of this.
+let mapSetupDone = false;
+function setupMapView() {
+    if (mapSetupDone) return;
+    const size = map.getSize();
+    if (size.x === 0 || size.y === 0) return;
+    mapSetupDone = true;
+    map.invalidateSize();
+    if (BOUNDS) {
+        map.fitBounds([[BOUNDS[0][1], BOUNDS[0][0]], [BOUNDS[1][1], BOUNDS[1][0]]], { padding: [30, 30], animate: false });
+    }
+    if (HEAT_POINTS.length) {
+        L.heatLayer(HEAT_POINTS, {
+            radius: 28, blur: 20, maxZoom: 16, max: MAX_CAR,
+            gradient: { 0.0: '#ffffb2', 0.25: '#fecc5c', 0.5: '#fd8d3c', 0.75: '#f03b20', 1.0: '#bd0026' },
+        }).addTo(map);
+    }
+}
+
+map.whenReady(function () {
+    setupMapView();
+    if (!mapSetupDone) {
+        const ro = new ResizeObserver(function () {
+            setupMapView();
+            if (mapSetupDone) ro.disconnect();
+        });
+        ro.observe(document.getElementById('map'));
+    }
+});
+</script>
+</body></html>"""
+
+    html = template.replace("__HEAT_POINTS__", json.dumps(heat_points))
+    html = html.replace("__MAX_CAR__", json.dumps(max_car))
+    html = html.replace("__BUS_FEATURES__", json.dumps(bus_features))
+    html = html.replace("__ZONE_JSON__", json.dumps(boundary_geojson) if boundary_geojson else "null")
+    html = html.replace("__BOUNDS_JSON__", json.dumps(bounds) if bounds else "null")
+    html = html.replace("__POLLUTANT__", pollutant_label)
+    html = html.replace("__UNIT__", unit)
+    return html
+
+
+def _render_heatmap_section(zone_insee, zone_name):
+    """Spatial emission intensity — Car sensors as a heat layer (leaflet.heat,
+    via CDN, no new Python dependency), Bus lines as colored polylines on the
+    same yellow-to-red scale. Both reuse already-computed pollutant totals
+    (emissions_engine.py / bus_emissions_engine.py) joined with geometry
+    already used elsewhere — see emissions/spatial_heatmap_data.py."""
+    pollutant = st.selectbox(
+        "Pollutant", options=list(POLLUTANTS), index=0, key="dash_heatmap_pollutant",
+    )
+    unit = "kg" if pollutant == "CO2" else "g"
+
+    car_latest = _latest_csv(TRAFFIC_DIR, zone_slug=zone_name.lower())
+    car_points = car_heatmap_points(car_latest, pollutant) if car_latest else []
+    bus_lines = bus_emission_lines(zone_insee, pollutant)
+
+    if pollutant == "CO2":
+        car_points = [{**p, "intensity": p["intensity"] / 1000} for p in car_points]
+        bus_lines = [{**ln, "value": ln["value"] / 1000} for ln in bus_lines]
+
+    if not car_points and not bus_lines:
+        st.info(
+            f"No car traffic or bus data available yet for {zone_name} — fetch Car "
+            f"Traffic data from the Mobility Historical tab first."
+        )
+        return
+
+    st.caption(
+        f"**{len(car_points)} car sensors** (total {pollutant} over the whole fetched "
+        f"period) · **{len(bus_lines)} bus lines** (estimated daily {pollutant}) — "
+        f"same yellow-to-red scale for both, since this shows intensity, not line identity."
+    )
+
+    boundary = get_zone_boundary(zone_insee)
+    bounds = get_zone_bounds(zone_insee)
+    html = _heatmap_html(car_points, bus_lines, boundary, bounds, pollutant, unit)
+    components.html(html, height=480, scrolling=False)
 
 
 def _sensor_bar_chart(summary_df, color, unit, top_n=12):
@@ -864,8 +1031,8 @@ def render():
         unsafe_allow_html=True,
     )
 
-    tab_map, tab_hist, tab_forecast = st.tabs([
-        "🚋 Tram Live Map", "📊 Mobility Historical", "🔮 Forecast & Simulation",
+    tab_map, tab_hist, tab_forecast, tab_heatmap = st.tabs([
+        "🚋 Tram Live Map", "📊 Mobility Historical", "🔮 Forecast & Simulation", "🔥 Emission Heatmap",
     ])
     with tab_map:
         _render_map_section(zone_insee)
@@ -873,3 +1040,5 @@ def render():
         _render_historical_section(zone_insee, zone_name)
     with tab_forecast:
         _render_forecast_section(zone_insee, zone_name)
+    with tab_heatmap:
+        _render_heatmap_section(zone_insee, zone_name)
