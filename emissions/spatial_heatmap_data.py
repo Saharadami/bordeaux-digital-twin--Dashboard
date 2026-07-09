@@ -22,12 +22,16 @@ POLLUTANTS = ("CO2", "NOx", "PM")
 
 def car_heatmap_points(csv_path, pollutant="CO2"):
     """Returns a list of {"lat", "lon", "intensity"} dicts, one per sensor —
-    intensity is the *total* of the chosen pollutant for that sensor summed
-    over the entire fetched CSV (all available days), matching the same
-    "whole fetched period" logic as the "Busiest locations" chart."""
+    intensity is the *average daily* total of the chosen pollutant for that
+    sensor (sum over the fetched CSV / number of distinct days in it). Zones
+    have different fetched history lengths (e.g. Bordeaux ~26 days vs Talence
+    ~40), so a raw multi-day sum would make longer-history zones look
+    artificially "hotter" even at equal daily pollution — averaging per day
+    puts every zone on the same footing."""
     col = f"{pollutant}_g"
     emissions_df = compute_emissions(csv_path)
-    totals = emissions_df.groupby("sensor_id")[col].sum()
+    n_days = emissions_df["date"].dt.floor("D").nunique() or 1
+    totals = emissions_df.groupby("sensor_id")[col].sum() / n_days
 
     raw = pd.read_csv(csv_path)
     geo = raw["Geo Point"].astype(str).str.split(",", n=1, expand=True)
@@ -47,7 +51,12 @@ def bus_emission_lines(zone_insee, pollutant="CO2"):
     """Returns a list of {"code", "coords": [[lat, lon], ...], "value"} dicts,
     one per bus line serving the zone — value is that line's *daily* total
     for the chosen pollutant (same figure as "Bus lines by estimated daily
-    CO2"), geometry is the same GTFS shape the live map draws."""
+    CO2"), geometry is the same GTFS shape the live map draws.
+
+    Already a single-day figure by construction (compute_bus_emissions_for_zone
+    estimates one representative weekday from the GTFS schedule, not a sum
+    over multiple fetched days like Car) — no averaging needed here, unlike
+    car_heatmap_points()."""
     result = compute_bus_emissions_for_zone(zone_insee)
     if result is None:
         return []

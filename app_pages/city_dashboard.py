@@ -405,7 +405,7 @@ def _render_heatmap_section(zone_insee, zone_name):
 
     caption_parts = []
     if show_car:
-        caption_parts.append(f"**{len(car_points)} car sensors** (total {pollutant} over the whole fetched period)")
+        caption_parts.append(f"**{len(car_points)} car sensors** (average daily {pollutant})")
     if show_bus:
         caption_parts.append(f"**{len(bus_lines)} bus lines** (estimated daily {pollutant})")
     tail = " — same yellow-to-red scale for both, since this shows intensity, not line identity." if show_car and show_bus else ""
@@ -717,6 +717,12 @@ def _render_emission_section(zone_insee, zone_name):
     c1.metric("Estimated CO₂", f"{_compact(df['CO2_g'].sum() / 1000)} kg")
     c2.metric("Estimated NOx", f"{_compact(df['NOx_g'].sum())} g")
     c3.metric("Estimated PM", f"{_compact(df['PM_g'].sum())} g")
+    st.caption(
+        "NOx factor: diesel passenger car average (Euro 5-era EU fleet) — not "
+        "blended with petrol share, which was not available from the source. "
+        "PM factor: still pending verification — attempted HBEFA/CITEPA and the "
+        "EMEP Guidebook PDF extraction, no reliable average found yet."
+    )
 
     daily_co2 = df.groupby(df["date"].dt.floor("D"))["CO2_g"].sum().div(1000).reset_index(name="CO2_kg")
     chart = alt.Chart(daily_co2).mark_bar(color="#8b6f47", size=10).encode(

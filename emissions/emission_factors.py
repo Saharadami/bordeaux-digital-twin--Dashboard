@@ -14,15 +14,33 @@ CO2 source (verified via web search, not from memory — see spec §4.1):
   the average of the actual circulating fleet (which typically runs higher, since
   older cars stay on the road) — flagged in the dashboard disclaimer too.
 
-NOx / PM: still placeholders pending EEA/EMEP Guidebook Tier 1 verification
-(spec §4.2/§4.3) — average mixed-EU-fleet exhaust figures, not sensor- or
-zone-specific.
+NOx source (verified via web search 2026-07-09, not from memory):
+  EMEP/EEA air pollutant emission inventory guidebook 2023 (Update 2025),
+  https://www.eea.europa.eu/en/analysis/publications/emep-eea-guidebook-2023/part-b-sectoral-guidance-chapters/1-energy/1-a-combustion/1-a-3-b-i/@@download/file
+  Table 3-17 (Tier 2 exhaust emission factors for passenger cars, NFR
+  1.A.3.b.i), category "Diesel Medium", Euro 5 — average of the table's two
+  listed sub-conditions: avg(0.213, 0.109) = 0.16 g/km. DIESEL ONLY: the same
+  table's petrol rows, and the Tier 1 table (3-6), had internally-inconsistent
+  (non-monotonic across Euro classes, i.e. physically impossible) values in
+  this PDF's text extraction, so a diesel+petrol blended fleet average could
+  not be verified this pass. This diesel-only figure is used as the best
+  available substitute for the prior unverified placeholder (0.35) — flagged
+  in the dashboard caption too.
+
+PM: still an unverified placeholder. Attempted this pass (2026-07-09): EMEP/EEA
+Guidebook (Tables 3-6 and 3-18 — same PDF-extraction reliability problem as
+NOx above, values were non-monotonic/physically inconsistent across Euro
+classes), plus web searches against HBEFA (Handbook Emission Factors for Road
+Transport) and CITEPA (French national inventory agency) — neither surfaced a
+citable mixed-fleet-average g/km figure in a single search pass. Kept at the
+prior placeholder value pending a future, more thorough pass — flagged in the
+dashboard caption too.
 """
 
 EMISSION_FACTORS_G_PER_KM = {
     "CO2": 106.8,   # g/km — EEA, EU-wide average, new passenger cars, 2024 (provisional, WLTP)
-    "NOx": 0.35,    # g/km — average mixed EU passenger car fleet, TODO verify vs EEA/EMEP Guidebook Tier 1
-    "PM":  0.02,    # g/km — average mixed EU passenger car fleet (exhaust only), TODO verify
+    "NOx": 0.16,    # g/km — EMEP/EEA Guidebook Table 3-17, Diesel Medium, Euro 5 — diesel only, see module docstring
+    "PM":  0.02,    # g/km — still unverified placeholder, see module docstring
 }
 
 UNIT_DISTANCE_KM = 1.0  # assumed distance per vehicle pass at a sensor
@@ -36,7 +54,7 @@ def estimate_emissions(vehicle_count: float) -> dict:
     }
 
 
-# Bus source (verified via web search, not from memory):
+# Bus source — FINAL, confirmed 2026-07-09 (verified via web search, not from memory):
 #   EMEP/EEA air pollutant emission inventory guidebook 2023 (Update 2025),
 #   https://www.eea.europa.eu/en/analysis/publications/emep-eea-guidebook-2023/part-b-sectoral-guidance-chapters/1-energy/1-a-combustion/1-a-3-b-i/@@download/file
 #   Tables 3-23 (CO2/NOx) & 3-24 (PM), category "Urban Diesel Buses Standard
