@@ -614,11 +614,6 @@ def _render_energy_section(zone_insee, zone_name):
             use_container_width=True,
         )
 
-    st.caption(
-        "Private cars dominate total daily energy use simply by volume of traffic — "
-        "even though each bus burns far more energy per kilometer than each car."
-    )
-
     with st.expander("🔧 What-if Scenarios", expanded=False):
         st.caption("Simple rule-based projections — linear scaling, not a calibrated simulation.")
 
@@ -662,10 +657,6 @@ def _render_energy_section(zone_insee, zone_name):
         electrification_pct = st.slider(
             "Bus Fleet Electrification", min_value=0, max_value=100, value=0, step=10,
             format="%d%%", key=f"dash_whatif_electrification_{zone_insee}",
-        )
-        st.caption(
-            "Electric bus energy consumption is not modeled in this simple scenario — "
-            "only tailpipe CO2/NOx/PM reduction is shown here."
         )
         remaining_factor = 1 - electrification_pct / 100
 
