@@ -18,7 +18,6 @@ MODULES_TO_CHECK = [
     "app_pages.overview",
     "app_pages.catalog",
     "app_pages.data_models",
-    "app_pages.ontology",
     "app_pages.tram_b",
     "app_pages.simulation",
     "app_pages.collectors_page",

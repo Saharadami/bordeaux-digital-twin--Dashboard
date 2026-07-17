@@ -1,9 +1,6 @@
 # Mobility Emission Estimation Engine — Implementation Spec
-### برای اجرای مستقیم در Claude Code — پروژه Bordeaux Urban Digital Twin
 
----
 
-## ۰. زمینه (Context) — برای Claude Code
 
 پروژه یک Digital Twin شهری بوردو با ساختار Streamlit است (۵ تب: Overview, Data catalog,
 Data Model & Ontology, City Dashboard, Data & Resources). `City Dashboard` منطقه‌محور است

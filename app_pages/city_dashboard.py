@@ -6,13 +6,15 @@ Add a zone in zones.py and it shows up in the selector automatically.
 
 import os
 import json
+import math
 import pandas as pd
 import altair as alt
 import streamlit as st
 import streamlit.components.v1 as components
+import plotly.graph_objects as go
 
 from zones import ZONES, DEFAULT_ZONE
-from geo_utils import get_zone_boundary, get_zone_bounds
+from geo_utils import get_zone_boundary, get_zone_bounds, get_zone_centre, point_in_zone
 from app_pages.simulation import (
     load_lines_data, fetch_raw_vehicles, build_matched_vehicles,
     build_route_geojson, build_stops_geojson, build_vehicles_geojson,
@@ -23,6 +25,7 @@ from emissions.bus_emissions_engine import compute_bus_emissions_for_zone
 from emissions.emission_factors import BUS_EMISSION_FACTORS_G_PER_KM, ENERGY_MJ_PER_KM
 from forecasting.traffic_forecasting_engine import forecast_traffic
 from emissions.spatial_heatmap_data import car_heatmap_points, bus_emission_lines, POLLUTANTS
+from dispersion.heat_dispersion_engine import compute_ensemble_heat, _all_hourly_wind, K_LOSS_S, _H_MIX_M
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "data")
 MOBILITY_DIR = os.path.join(DATA_DIR, "mobility")
@@ -109,6 +112,19 @@ def _compact_signed(n, unit):
         return None
     sign = "+" if n >= 0 else "-"
     return f"{sign}{_compact(abs(n))} {unit}"
+
+
+def _fmt_kg(grams):
+    """Whole-number kilograms with thousands separator — no abbreviation."""
+    return f"{grams / 1000:,.0f}"
+
+
+def _fmt_kg_signed(grams):
+    """Signed kg delta — same ~zero suppression as _compact_signed."""
+    if abs(grams) < 1e-6:
+        return None
+    sign = "+" if grams >= 0 else "-"
+    return f"{sign}{_fmt_kg(abs(grams))} kg"
 
 
 def _load_sensor_summary(mode_key, zone_insee, days_back=None):
@@ -251,7 +267,10 @@ def _yellow_red_hex(frac):
     return "#{:02x}{:02x}{:02x}".format(*_HEAT_RAMP[-1][1])
 
 
-def _heatmap_html(car_points, bus_lines, boundary_geojson, bounds, pollutant_label, unit):
+_POLLUTANT_GRADIENT = {"0.0": "#ffffb2", "0.25": "#fecc5c", "0.5": "#fd8d3c", "0.75": "#f03b20", "1.0": "#bd0026"}
+
+
+def _heatmap_html(car_points, bus_lines, boundary_geojson, bounds, pollutant_label, unit, gradient=None, radius=28, blur=20, wind_arrows=None):
     max_car = max((p["intensity"] for p in car_points), default=1.0) or 1.0
     bus_values = [ln["value"] for ln in bus_lines]
     min_bus, max_bus = (min(bus_values), max(bus_values)) if bus_values else (0.0, 1.0)
@@ -289,6 +308,7 @@ const ZONE_GEOJSON = __ZONE_JSON__;
 const BOUNDS = __BOUNDS_JSON__;
 const POLLUTANT = "__POLLUTANT__";
 const UNIT = "__UNIT__";
+const WIND_ARROWS = __WIND_ARROWS__;
 
 const map = L.map('map', { zoomControl: false, center: [44.85, -0.58], zoom: 12 });
 L.control.zoom({ position: 'bottomright' }).addTo(map);
@@ -327,10 +347,29 @@ function setupMapView() {
     }
     if (HEAT_POINTS.length) {
         L.heatLayer(HEAT_POINTS, {
-            radius: 28, blur: 20, maxZoom: 16, max: MAX_CAR,
-            gradient: { 0.0: '#ffffb2', 0.25: '#fecc5c', 0.5: '#fd8d3c', 0.75: '#f03b20', 1.0: '#bd0026' },
+            radius: __RADIUS__, blur: __BLUR__, maxZoom: 16, max: MAX_CAR,
+            gradient: __GRADIENT__,
         }).addTo(map);
     }
+    WIND_ARROWS.forEach(function (a) { drawWindArrow(a.lat, a.lon, a.bearing); });
+}
+
+// Compass-bearing arrow rendered as a rotated unicode glyph via L.divIcon
+// instead of hand-built polyline+polygon geometry — a single crisp character
+// with CSS text-shadow reads clearly against the dark basemap at any zoom,
+// unlike thin manually-drawn lines. "⬆" points due north at 0deg rotation,
+// so bearingDeg (already clockwise-from-north out of the atan2 above) maps
+// straight into CSS rotate() with no offset needed.
+function drawWindArrow(lat, lon, bearingDeg) {
+    const arrowIcon = L.divIcon({
+        html: '<div style="transform: rotate(' + bearingDeg + 'deg); ' +
+              'font-size: 28px; line-height: 28px; text-align: center; ' +
+              'color: #4fc3f7; text-shadow: 0 0 3px rgba(0,0,0,0.9), 0 0 3px rgba(0,0,0,0.9);">⬆</div>',
+        className: 'wind-arrow-icon',
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
+    });
+    L.marker([lat, lon], { icon: arrowIcon }).addTo(map);
 }
 
 map.whenReady(function () {
@@ -353,7 +392,217 @@ map.whenReady(function () {
     html = html.replace("__BOUNDS_JSON__", json.dumps(bounds) if bounds else "null")
     html = html.replace("__POLLUTANT__", pollutant_label)
     html = html.replace("__UNIT__", unit)
+    html = html.replace("__GRADIENT__", json.dumps(gradient or _POLLUTANT_GRADIENT))
+    html = html.replace("__RADIUS__", json.dumps(radius))
+    html = html.replace("__BLUR__", json.dumps(blur))
+    html = html.replace("__WIND_ARROWS__", json.dumps(wind_arrows or []))
     return html
+
+
+HEAT_LIMITATIONS = [
+    "2D domain only — no building geometry / urban canyon effects (no building-height dataset in this project).",
+    "Uniform wind field across the whole zone, from a single weather station (Bordeaux city centre) — "
+    "Talence and Pessac reuse the same wind, since only one station's data is collected.",
+    "Total energy consumption is assumed ≈ waste heat released — the standard \"energy-consumption\" "
+    "approach in Anthropogenic Heat Flux literature, not a project-specific measurement.",
+    "D (eddy diffusivity) and k (vertical loss) are engineering choices inside sourced literature ranges, "
+    "not values calibrated for Bordeaux specifically — see heat_dispersion_spec.md §3.",
+    "The source term is held constant across every ensemble member: car traffic counts and the GTFS bus "
+    "schedule are both daily aggregates, not hour-resolved, so only the wind varies between members.",
+    "The color scale is relative intensity, not a calibrated absolute W/m² reading — see spec §2.3.",
+    "Mean/Std are an early near-field snapshot (spin-up ≈ 1.6h), not the system's full equilibrium — at "
+    "this domain scale the true steady state is itself close to uniform, so more spin-up erases structure "
+    "rather than revealing it. See heat_dispersion_spec.md §2.5 for the sweep that led to this choice.",
+    "The What-if ΔT estimate is a separate calculation from the spatial heat map above: a single "
+    "steady-state energy balance spread uniformly over the zone's bounding-box footprint, not a "
+    "spatially-resolved temperature field — see heat_dispersion_spec.md §8.",
+    "ΔT uses standard sea-level air constants (density, specific heat) rather than season- or "
+    "zone-specific values — see heat_dispersion_spec.md §8.",
+    "The cross-zone ΔT comparison uses each zone's bounding-box footprint, not its true polygon "
+    "area — irregular zones (e.g. Pessac, whose bounding box is ~2.6× its actual built-up area) "
+    "get a disproportionately larger denominator, so their computed ΔT is lower than a like-for-like "
+    "(true-area) comparison would show.",
+]
+
+_HEAT_MEAN_GRADIENT = {"0.0": "#fff5eb", "0.25": "#fdbe85", "0.5": "#fd8d3c", "0.75": "#d94801", "1.0": "#7f2704"}
+
+# ── What-if ΔT (°C) — steady-state mixed-layer heat balance, reusing the same
+# K_LOSS_S/H_MIX_M engineering choices as the spatial heat model above (see
+# heat_dispersion_spec.md §8 for the derivation and sourcing) ──
+_AIR_DENSITY_KG_M3 = 1.2     # standard air density, sea level ~20°C
+_AIR_CP_J_PER_KGK = 1005.0   # standard specific heat capacity of dry air
+_M_PER_DEG_LAT = 111_320.0   # same standard constant as dispersion/heat_dispersion_engine.py
+
+
+def _zone_area_m2(zone_insee):
+    """Bounding-box footprint area — same lon/lat→meters conversion
+    heat_dispersion_engine._build_grid uses for its grid cells."""
+    (min_lon, min_lat), (max_lon, max_lat) = get_zone_bounds(zone_insee)
+    center_lon, center_lat = get_zone_centre(zone_insee)
+    m_per_deg_lon = _M_PER_DEG_LAT * math.cos(math.radians(center_lat))
+    return (max_lon - min_lon) * m_per_deg_lon * (max_lat - min_lat) * _M_PER_DEG_LAT
+
+
+def _delta_t_celsius(combined_mj_per_day, zone_insee):
+    """Steady-state ΔT: waste-heat input (W) balanced by entrainment loss at
+    K_LOSS_S/H_MIX_M (the same rates the spatial heat model uses), spread
+    over the zone's bounding-box footprint. An engineering choice inside a
+    sourced range, not a calibrated absolute reading — see spec §8."""
+    if combined_mj_per_day <= 0:
+        return 0.0
+    q_watts = combined_mj_per_day * 1_000_000 / 86400
+    denom = _AIR_DENSITY_KG_M3 * _AIR_CP_J_PER_KGK * K_LOSS_S * _H_MIX_M * _zone_area_m2(zone_insee)
+    return q_watts / denom if denom > 0 else 0.0
+
+
+def _energy_flow_sankey(car_daily_mj, bus_daily_mj):
+    """Static baseline flow (today's numbers, not scenario-adjusted) — Car/Bus
+    energy into one Total Energy node, all of it out as Waste Heat (same
+    energy-consumption ≈ waste-heat assumption already in HEAT_LIMITATIONS)."""
+    total_mj = car_daily_mj + bus_daily_mj
+    fig = go.Figure(go.Sankey(
+        arrangement="snap",
+        node=dict(
+            label=["🚗 Car Traffic", "🚌 Bus Traffic", "⚡ Total Energy Consumption", "🌡️ Waste Heat"],
+            color=[COLOR_CAR, COLOR_BUS, COLOR_ENERGY, "#d94801"],
+            pad=24, thickness=20, line=dict(color=SURFACE, width=2),
+        ),
+        link=dict(
+            source=[0, 1, 2], target=[2, 2, 3],
+            value=[car_daily_mj, bus_daily_mj, total_mj],
+            color=["rgba(42,120,214,0.35)", "rgba(224,121,30,0.35)", "rgba(217,72,1,0.35)"],
+        ),
+    ))
+    fig.update_layout(
+        height=280, margin=dict(l=10, r=10, t=10, b=10),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color=INK_SECONDARY, size=12),
+    )
+    return fig
+
+
+def _delta_t_waterfall(dt_baseline, dt_traffic, dt_both):
+    """Incremental bridge — each middle bar is the ADDED change from the
+    previous stage (not an absolute value), so a slider left at 0% renders
+    as a zero-height bar with no special-casing. Bar direction uses the
+    fixed status palette (never the categorical one): rising ΔT = critical
+    (red), falling ΔT = good (green)."""
+    step_traffic = dt_traffic - dt_baseline
+    step_electrification = dt_both - dt_traffic
+    fig = go.Figure(go.Waterfall(
+        x=["Today", "With Traffic Change", "+ Bus Electrification"],
+        measure=["absolute", "relative", "relative"],
+        y=[dt_baseline, step_traffic, step_electrification],
+        text=[f"{dt_baseline:.3f}°C", f"{step_traffic:+.3f}°C", f"{step_electrification:+.3f}°C"],
+        textposition="outside",
+        connector=dict(line=dict(color=GRIDLINE, width=1)),
+        increasing=dict(marker=dict(color="#d03b3b")),
+        decreasing=dict(marker=dict(color="#0ca30c")),
+        totals=dict(marker=dict(color=COLOR_ENERGY)),
+    ))
+    fig.update_layout(
+        height=280, margin=dict(l=10, r=10, t=10, b=10),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color=INK_SECONDARY, size=12), showlegend=False,
+        yaxis=dict(title="ΔT (°C)", gridcolor=GRIDLINE, zerolinecolor=BASELINE),
+    )
+    return fig
+
+
+def _compute_baseline_delta_t(zone_insee):
+    """Baseline ΔT (no What-if scenario) for an arbitrary zone — same
+    aggregation _render_energy_section uses, without any UI rendering, so it
+    can run for zones other than the one currently selected in the page's
+    zone dropdown (see _zone_heat_comparison_bar)."""
+    zone_name = ZONES[zone_insee]["name"]
+    car_latest = _latest_csv(TRAFFIC_DIR, zone_slug=zone_name.lower())
+    bus_result = compute_bus_emissions_for_zone(zone_insee)
+    if not car_latest or bus_result is None or bus_result["total_km"] <= 0:
+        return None
+
+    car_df = compute_emissions(car_latest)
+    if car_df.empty:
+        return None
+    period_options = {"Last 7 days": 7, "Last 30 days": 30, "Last 90 days": 90, "All available": None}
+    period_label = st.session_state.get("dash_emission_period", "Last 90 days")
+    days_back = period_options.get(period_label)
+    if days_back:
+        cutoff = car_df["date"].max() - pd.Timedelta(days=days_back)
+        car_df = car_df[car_df["date"] >= cutoff]
+    n_days = car_df["date"].dt.floor("D").nunique()
+    if car_df.empty or n_days == 0:
+        return None
+
+    car_daily_mj = car_df["Energy_MJ"].sum() / n_days
+    bus_daily_mj = bus_result["Energy_MJ"]
+    return _delta_t_celsius(car_daily_mj + bus_daily_mj, zone_insee)
+
+
+def _zone_heat_comparison_bar(zone_deltas):
+    """Plain magnitude comparison across zones (not identity/categorical),
+    so a single sequential hue is correct per the dataviz skill — reuses
+    COLOR_ENERGY, the same violet already anchoring the Sankey energy node
+    and the Waterfall's baseline/total bars."""
+    fig = go.Figure(go.Bar(
+        x=[name for name, _ in zone_deltas],
+        y=[dt for _, dt in zone_deltas],
+        marker=dict(color=COLOR_ENERGY),
+        text=[f"{dt:.3f}°C" for _, dt in zone_deltas],
+        textposition="outside",
+    ))
+    fig.update_layout(
+        height=280, margin=dict(l=10, r=10, t=10, b=10),
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(color=INK_SECONDARY, size=12), showlegend=False,
+        yaxis=dict(title="ΔT (°C)", gridcolor=GRIDLINE, zerolinecolor=BASELINE),
+    )
+    return fig
+
+
+def _grid_to_points(lon_centers, lat_centers, grid):
+    """Flattens a 2D ensemble grid (see dispersion/heat_dispersion_engine.py)
+    into the same {"lat","lon","intensity"} point format car_heatmap_points()
+    already produces, so it can be fed straight into _heatmap_html()'s
+    leaflet.heat layer — no separate rendering path needed."""
+    return [
+        {"lat": float(lat_centers[j]), "lon": float(lon_centers[i]), "intensity": float(grid[j][i])}
+        for j in range(len(lat_centers))
+        for i in range(len(lon_centers))
+    ]
+
+
+def _vector_mean_wind_bearing():
+    """Vector-mean wind direction (compass bearing, degrees clockwise from
+    north) across the same historical samples the heat ensemble itself uses
+    — reuses heat_dispersion_engine._all_hourly_wind (already the (u, v)
+    velocity vectors _run_to_quasi_steady is fed) instead of re-deriving wind
+    vectors from raw speed/direction here. Averages u and v separately, then
+    atan2 — a naive mean of the raw degree values would be wrong for a
+    circular quantity (e.g. 359° and 1° should average to 0°, not 180°)."""
+    wind_result = _all_hourly_wind()
+    if wind_result is None:
+        return None
+    uv, _ = wind_result
+    if not uv:
+        return None
+    mean_u = sum(u for u, v in uv) / len(uv)
+    mean_v = sum(v for u, v in uv) / len(uv)
+    return math.degrees(math.atan2(mean_u, mean_v)) % 360
+
+
+def _wind_arrow_points(zone_insee, bounds):
+    """3-4 points spread across the zone (a sparse 2x2 grid inside the
+    bounding box, kept only where actually inside the zone polygon — via
+    geo_utils.point_in_zone, since bounding boxes for irregular zones like
+    Pessac extend well past the real boundary) to anchor wind-direction
+    arrows on the heat map."""
+    (min_lon, min_lat), (max_lon, max_lat) = bounds
+    candidates = [
+        (min_lon + fx * (max_lon - min_lon), min_lat + fy * (max_lat - min_lat))
+        for fx in (0.3, 0.7)
+        for fy in (0.3, 0.7)
+    ]
+    return [(lat, lon) for lon, lat in candidates if point_in_zone(lon, lat, zone_insee)]
 
 
 def _render_heatmap_section(zone_insee, zone_name):
@@ -361,7 +610,12 @@ def _render_heatmap_section(zone_insee, zone_name):
     via CDN, no new Python dependency), Bus lines as colored polylines on the
     same yellow-to-red scale. Both reuse already-computed pollutant totals
     (emissions_engine.py / bus_emissions_engine.py) joined with geometry
-    already used elsewhere — see emissions/spatial_heatmap_data.py."""
+    already used elsewhere — see emissions/spatial_heatmap_data.py. A second,
+    always-on map right below reuses the same car/bus energy figures through
+    a 2D advection-diffusion ensemble instead — see
+    dispersion/heat_dispersion_engine.py — rendered with the same
+    leaflet.heat technique (not Plotly) so both maps sit on the same real
+    OpenStreetMap/CARTO basemap and read as one visual system."""
     col_pollutant, col_car, col_bus = st.columns([2, 1, 1])
     with col_pollutant:
         pollutant = st.selectbox(
@@ -383,10 +637,8 @@ def _render_heatmap_section(zone_insee, zone_name):
     )
     unit = "kg" if pollutant == "CO2" else "g"
 
-    car_points = []
-    if show_car:
-        car_latest = _latest_csv(TRAFFIC_DIR, zone_slug=zone_name.lower())
-        car_points = car_heatmap_points(car_latest, pollutant) if car_latest else []
+    car_latest = _latest_csv(TRAFFIC_DIR, zone_slug=zone_name.lower()) if show_car else None
+    car_points = car_heatmap_points(car_latest, pollutant) if car_latest else []
 
     bus_lines = []
     if show_bus:
@@ -415,6 +667,58 @@ def _render_heatmap_section(zone_insee, zone_name):
     bounds = get_zone_bounds(zone_insee)
     html = _heatmap_html(car_points, bus_lines, boundary, bounds, pollutant, unit)
     components.html(html, height=480, scrolling=False)
+
+    st.divider()
+    st.markdown("### 🌡️ Traffic-derived heat")
+    st.caption(
+        "Ensemble-averaged waste heat from the same traffic (early near-field snapshot — "
+        "see Known limitations below)."
+    )
+    heat_result = compute_ensemble_heat(zone_insee, car_latest, include_car=show_car, include_bus=show_bus)
+    if heat_result is None:
+        st.info(
+            "No weather data available yet — fetch it from the Data & Resources / "
+            "Collectors page first (Open-Meteo, Bordeaux station)."
+        )
+        return
+    if heat_result["n_car_sensors"] == 0 and heat_result["n_bus_lines"] == 0:
+        st.info(
+            f"No car traffic or bus data for {zone_name} yet (or both layers are hidden above) — "
+            f"heat needs at least one source."
+        )
+        return
+
+    st.caption(
+        f"**{heat_result['n_car_sensors']} car sensors** + **{heat_result['n_bus_lines']} bus lines** as heat "
+        f"sources · **{heat_result['n_samples']}** historical wind samples · relative intensity scale "
+        f"(not a calibrated absolute reading — see Known limitations)."
+    )
+    # radius/blur much smaller than the default (tuned for ~226 sparse sensor
+    # points, spread across the whole map view). This grid is 2,500 points
+    # only ~170-240m apart in real space — measured directly against the
+    # rendered map (not assumed): at the zoom fitBounds actually picks for
+    # this zone (11), adjacent grid points sit only ~3-5px apart on screen.
+    # radius=28 (default) made neighboring points' blur footprints overlap
+    # and sum many-fold, saturating the whole zone to one flat color.
+    # radius=8/blur=5 was chosen after screenshotting 8/15/20 side by side:
+    # 15 and 20 both drifted back toward the same saturated-blob look (worse
+    # at 20), while 8 kept visible local structure and the basemap streets
+    # underneath.
+
+    bearing = _vector_mean_wind_bearing()
+    wind_arrows = [
+        {"lat": lat, "lon": lon, "bearing": bearing}
+        for lat, lon in _wind_arrow_points(zone_insee, bounds)
+    ] if bearing is not None else []
+    if wind_arrows:
+        st.caption(f"Arrows show the vector-mean wind direction across those {heat_result['n_samples']} samples.")
+
+    heat_points = _grid_to_points(heat_result["lon_centers"], heat_result["lat_centers"], heat_result["mean_grid"])
+    heat_html = _heatmap_html(
+        heat_points, [], boundary, bounds, "Traffic Heat", "relative intensity",
+        gradient=_HEAT_MEAN_GRADIENT, radius=8, blur=5, wind_arrows=wind_arrows,
+    )
+    components.html(heat_html, height=480, scrolling=False)
 
 
 def _sensor_bar_chart(summary_df, color, unit, top_n=12):
@@ -713,10 +1017,19 @@ def _render_emission_section(zone_insee, zone_name):
         f"loaded `{os.path.basename(latest)}`"
     )
 
+    n_days = df["date"].dt.floor("D").nunique()
+
+    st.markdown(f"**Daily average** (across {n_days} day(s) of data)")
+    d1, d2, d3 = st.columns(3)
+    d1.metric("CO₂", f"{_fmt_kg(df['CO2_g'].sum() / n_days)} kg")
+    d2.metric("NOx", f"{_fmt_kg(df['NOx_g'].sum() / n_days)} kg")
+    d3.metric("PM", f"{_fmt_kg(df['PM_g'].sum() / n_days)} kg")
+
+    st.markdown(f"**Total over selected period** ({n_days} day(s), {period_label.lower()})")
     c1, c2, c3 = st.columns(3)
-    c1.metric("Estimated CO₂", f"{_compact(df['CO2_g'].sum() / 1000)} kg")
-    c2.metric("Estimated NOx", f"{_compact(df['NOx_g'].sum())} g")
-    c3.metric("Estimated PM", f"{_compact(df['PM_g'].sum())} g")
+    c1.metric("Estimated CO₂", f"{_fmt_kg(df['CO2_g'].sum())} kg")
+    c2.metric("Estimated NOx", f"{_fmt_kg(df['NOx_g'].sum())} kg")
+    c3.metric("Estimated PM", f"{_fmt_kg(df['PM_g'].sum())} kg")
     st.caption(
         "NOx factor: diesel passenger car average (Euro 5-era EU fleet) — not "
         "blended with petrol share, which was not available from the source. "
@@ -741,13 +1054,11 @@ def _render_emission_section(zone_insee, zone_name):
         )
 
     with st.expander("📋 Per-sensor / per-day estimate"):
-        st.dataframe(
-            df.rename(columns={
-                "sensor_id": "Sensor ID", "date": "Date", "vehicle_count": "Vehicle Count",
-                "CO2_g": "CO2 (g)", "NOx_g": "NOx (g)", "PM_g": "PM (g)",
-            }),
-            use_container_width=True, hide_index=True,
-        )
+        per_sensor = df.assign(CO2_g=df["CO2_g"] / 1000).rename(columns={
+            "sensor_id": "Sensor ID", "date": "Date", "vehicle_count": "Vehicle Count",
+            "CO2_g": "CO2 (kg)", "NOx_g": "NOx (g)", "PM_g": "PM (g)",
+        })
+        st.dataframe(per_sensor, use_container_width=True, hide_index=True)
 
 
 def _render_bus_emission_section(zone_insee, zone_name):
@@ -769,9 +1080,9 @@ def _render_bus_emission_section(zone_insee, zone_name):
     )
 
     c1, c2, c3 = st.columns(3)
-    c1.metric("Estimated daily CO₂", f"{_compact(result['CO2_g'] / 1000)} kg")
-    c2.metric("Estimated daily NOx", f"{_compact(result['NOx_g'])} g")
-    c3.metric("Estimated daily PM", f"{_compact(result['PM_g'])} g")
+    c1.metric("Estimated daily CO₂", f"{_fmt_kg(result['CO2_g'])} kg")
+    c2.metric("Estimated daily NOx", f"{_fmt_kg(result['NOx_g'])} kg")
+    c3.metric("Estimated daily PM", f"{_fmt_kg(result['PM_g'])} kg")
 
     # Comparison against this zone's Car Traffic emission estimate, if that
     # section has already fetched/computed data for the same zone — silently
@@ -825,12 +1136,12 @@ def _render_energy_section(zone_insee, zone_name):
             "Energy Consumption needs both Car Traffic data and a mapped bus network "
             "for this zone — fetch Car Traffic data above if you haven't yet."
         )
-        return
+        return None
 
     car_df = compute_emissions(car_latest)
     if car_df.empty:
         st.info("No usable car traffic data to estimate energy from.")
-        return
+        return None
     period_options = {"Last 7 days": 7, "Last 30 days": 30, "Last 90 days": 90, "All available": None}
     period_label = st.session_state.get("dash_emission_period", "Last 90 days")
     days_back = period_options.get(period_label)
@@ -840,7 +1151,7 @@ def _render_energy_section(zone_insee, zone_name):
     n_days = car_df["date"].dt.floor("D").nunique()
     if car_df.empty or n_days == 0:
         st.info("No car traffic data in the selected period to estimate energy from.")
-        return
+        return None
 
     car_daily_mj = car_df["Energy_MJ"].sum() / n_days
     bus_daily_mj = bus_result["Energy_MJ"]
@@ -859,9 +1170,9 @@ def _render_energy_section(zone_insee, zone_name):
     with col_info:
         with st.popover("ℹ️"):
             st.write(
-                "This Traffic → Energy → Emissions pathway extends the Mobility → generates "
-                "→ AirQuality relationship already documented in the project's Ontology (Data "
-                "Model & Ontology tab), adding an explicit Energy step in between."
+                "This Traffic → Energy → Emissions pathway reflects the same Mobility → "
+                "generates → AirQuality relationship used elsewhere in the project's data "
+                "model, with an explicit Energy step added in between."
             )
 
     st.markdown(
@@ -886,6 +1197,22 @@ def _render_energy_section(zone_insee, zone_name):
             use_container_width=True,
         )
 
+    return {
+        "car_df": car_df, "bus_result": bus_result,
+        "car_daily_mj": car_daily_mj, "bus_daily_mj": bus_daily_mj,
+    }
+
+
+def _render_whatif_section(zone_insee, zone_name, energy_data):
+    """What-if Scenarios (Traffic Change / Bus Electrification, unchanged
+    logic from the old _render_energy_section) plus a ΔT estimate and two
+    Plotly summary charts — rendered after the spatial/heat map section (not
+    before it), per the tab's final reading order."""
+    car_df = energy_data["car_df"]
+    bus_result = energy_data["bus_result"]
+    car_daily_mj = energy_data["car_daily_mj"]
+    bus_daily_mj = energy_data["bus_daily_mj"]
+
     with st.expander("🔧 What-if Scenarios", expanded=False):
         st.caption("Simple rule-based projections — linear scaling, not a calibrated simulation.")
 
@@ -903,18 +1230,18 @@ def _render_energy_section(zone_insee, zone_name):
 
         t1, t2, t3, t4 = st.columns(4)
         t1.metric(
-            "CO₂", f"{_compact(car_co2_g * traffic_factor / 1000)} kg",
-            delta=_compact_signed((car_co2_g * traffic_factor - car_co2_g) / 1000, "kg"),
+            "Total CO₂", f"{_fmt_kg(car_co2_g * traffic_factor)} kg",
+            delta=_fmt_kg_signed(car_co2_g * traffic_factor - car_co2_g),
             delta_color="inverse",
         )
         t2.metric(
-            "NOx", f"{_compact(car_nox_g * traffic_factor)} g",
-            delta=_compact_signed(car_nox_g * traffic_factor - car_nox_g, "g"),
+            "Total NOx", f"{_fmt_kg(car_nox_g * traffic_factor)} kg",
+            delta=_fmt_kg_signed(car_nox_g * traffic_factor - car_nox_g),
             delta_color="inverse",
         )
         t3.metric(
-            "PM", f"{_compact(car_pm_g * traffic_factor)} g",
-            delta=_compact_signed(car_pm_g * traffic_factor - car_pm_g, "g"),
+            "Total PM", f"{_fmt_kg(car_pm_g * traffic_factor)} kg",
+            delta=_fmt_kg_signed(car_pm_g * traffic_factor - car_pm_g),
             delta_color="inverse",
         )
         t4.metric(
@@ -938,20 +1265,75 @@ def _render_energy_section(zone_insee, zone_name):
 
         b1, b2, b3 = st.columns(3)
         b1.metric(
-            "Bus CO₂", f"{_compact(bus_co2_g * remaining_factor / 1000)} kg",
-            delta=_compact_signed((bus_co2_g * remaining_factor - bus_co2_g) / 1000, "kg"),
+            "Bus CO₂", f"{_fmt_kg(bus_co2_g * remaining_factor)} kg",
+            delta=_fmt_kg_signed(bus_co2_g * remaining_factor - bus_co2_g),
             delta_color="inverse",
         )
         b2.metric(
-            "Bus NOx", f"{_compact(bus_nox_g * remaining_factor)} g",
-            delta=_compact_signed(bus_nox_g * remaining_factor - bus_nox_g, "g"),
+            "Bus NOx", f"{_fmt_kg(bus_nox_g * remaining_factor)} kg",
+            delta=_fmt_kg_signed(bus_nox_g * remaining_factor - bus_nox_g),
             delta_color="inverse",
         )
         b3.metric(
-            "Bus PM", f"{_compact(bus_pm_g * remaining_factor)} g",
-            delta=_compact_signed(bus_pm_g * remaining_factor - bus_pm_g, "g"),
+            "Bus PM", f"{_fmt_kg(bus_pm_g * remaining_factor)} kg",
+            delta=_fmt_kg_signed(bus_pm_g * remaining_factor - bus_pm_g),
             delta_color="inverse",
         )
+
+        st.divider()
+
+        st.markdown("**Estimated Thermal Impact (ΔT)**")
+        st.caption(
+            "Rule-based steady-state estimate — waste heat balanced against the same "
+            "entrainment loss rate used by the heat map above, spread over the zone's "
+            "bounding-box footprint. Not a calibrated absolute reading (see Known "
+            "limitations)."
+        )
+        dt_baseline = _delta_t_celsius(car_daily_mj + bus_daily_mj, zone_insee)
+        dt_traffic = _delta_t_celsius(car_daily_mj * traffic_factor + bus_daily_mj, zone_insee)
+        dt_both = _delta_t_celsius(
+            car_daily_mj * traffic_factor + bus_daily_mj * remaining_factor, zone_insee
+        )
+
+        d1, d2, d3 = st.columns(3)
+        d1.metric("Today", f"{dt_baseline:.3f} °C")
+        d2.metric(
+            "With Traffic Change", f"{dt_traffic:.3f} °C",
+            delta=f"{dt_traffic - dt_baseline:+.3f} °C", delta_color="inverse",
+        )
+        d3.metric(
+            "+ Bus Electrification", f"{dt_both:.3f} °C",
+            delta=f"{dt_both - dt_traffic:+.3f} °C", delta_color="inverse",
+        )
+
+    st.markdown("### 📊 Summary")
+    st.caption(
+        "For context: a typical urban heat island effect (from *all* sources combined — "
+        "buildings, pavement, traffic, industry) is on the order of 1-3°C. Traffic's "
+        "share alone is expected to be a small fraction of that total."
+    )
+    col_sankey, col_waterfall = st.columns(2)
+    with col_sankey:
+        st.plotly_chart(_energy_flow_sankey(car_daily_mj, bus_daily_mj), use_container_width=True)
+    with col_waterfall:
+        st.plotly_chart(_delta_t_waterfall(dt_baseline, dt_traffic, dt_both), use_container_width=True)
+
+    st.markdown("**🏙️ Heat Impact by Zone Density**")
+    st.caption(
+        "Result depends on each zone's total energy AND its bounding-box "
+        "footprint, not area alone. Irregular zones (e.g. Pessac) have a "
+        "bounding box much larger than their true built-up area, which "
+        "lowers the computed ratio further — see Known limitations."
+    )
+    zone_deltas = [
+        (ZONES[insee]["name"], dt)
+        for insee in ZONES
+        if (dt := _compute_baseline_delta_t(insee)) is not None
+    ]
+    if zone_deltas:
+        st.plotly_chart(_zone_heat_comparison_bar(zone_deltas), use_container_width=True)
+    else:
+        st.info("No zones have both car traffic and bus data available yet for this comparison.")
 
 
 def _render_historical_section(zone_insee, zone_name):
@@ -961,13 +1343,13 @@ def _render_historical_section(zone_insee, zone_name):
         key="dash_hist_mode",
     )
     cfg = MODES[mode_key]
+    energy_data = None
 
     if cfg["kind"] == "bus_emission":
         _render_bus_emission_section(zone_insee, zone_name)
-        _render_energy_section(zone_insee, zone_name)
-        return
+        energy_data = _render_energy_section(zone_insee, zone_name)
 
-    if cfg["kind"] == "note":
+    elif cfg["kind"] == "note":
         note = cfg["note"]
         if note is None:  # pedestrian: zone-specific
             note = (
@@ -976,62 +1358,76 @@ def _render_historical_section(zone_insee, zone_name):
                 f"Bordeaux. Will pick up automatically if that changes."
             )
         st.warning(note)
-        return
 
-    with st.expander(f"⚙️ Fetch / update {cfg['label'].lower()} data"):
-        st.caption(f"Source: {cfg['source_note']} · Zone: {zone_name}")
-        days = st.slider("Days of history", 7, 365, 90, key=f"dash_{mode_key}_days")
-        if st.button(f"⬇️ Fetch {cfg['label']} history", key=f"dash_fetch_{mode_key}"):
-            with st.spinner(f"Fetching {cfg['label'].lower()} history for {zone_name}..."):
-                try:
-                    mod = __import__(cfg["collector"], fromlist=["collect"])
-                    df = mod.collect(zone_insee=zone_insee, days_back=days, save=True)
-                    if df.empty:
-                        st.warning("No records returned.")
-                    else:
-                        st.success(f"✅ Fetched {len(df)} records")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error: {e}")
+    else:
+        with st.expander(f"⚙️ Fetch / update {cfg['label'].lower()} data"):
+            st.caption(f"Source: {cfg['source_note']} · Zone: {zone_name}")
+            days = st.slider("Days of history", 7, 365, 90, key=f"dash_{mode_key}_days")
+            if st.button(f"⬇️ Fetch {cfg['label']} history", key=f"dash_fetch_{mode_key}"):
+                with st.spinner(f"Fetching {cfg['label'].lower()} history for {zone_name}..."):
+                    try:
+                        mod = __import__(cfg["collector"], fromlist=["collect"])
+                        df = mod.collect(zone_insee=zone_insee, days_back=days, save=True)
+                        if df.empty:
+                            st.warning("No records returned.")
+                        else:
+                            st.success(f"✅ Fetched {len(df)} records")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error: {e}")
 
-    period_options = {"Last 7 days": 7, "Last 30 days": 30, "Last 90 days": 90, "All available": None}
-    period_label = st.selectbox("Period", options=list(period_options.keys()), index=2, key=f"dash_{mode_key}_period")
-    summary_df, filename = _load_sensor_summary(mode_key, zone_insee, period_options[period_label])
+        period_options = {"Last 7 days": 7, "Last 30 days": 30, "Last 90 days": 90, "All available": None}
+        period_label = st.selectbox("Period", options=list(period_options.keys()), index=2, key=f"dash_{mode_key}_period")
+        summary_df, filename = _load_sensor_summary(mode_key, zone_insee, period_options[period_label])
 
-    if summary_df is None or summary_df.empty:
-        st.info(f"No {cfg['label'].lower()} data yet — open the panel above to fetch it.")
-        return
+        if summary_df is None or summary_df.empty:
+            st.info(f"No {cfg['label'].lower()} data yet — open the panel above to fetch it.")
+        else:
+            st.caption(
+                f"**{len(summary_df)} sensors** reporting in {zone_name} · {period_label.lower()} · "
+                f"busiest: **{summary_df.iloc[0]['label']}** ({_compact(summary_df.iloc[0]['total'])} {cfg['unit']}) · "
+                f"loaded `{filename}`"
+            )
 
+            col_map, col_bar = st.columns([1, 1])
+            with col_map:
+                st.markdown(f"**Sensor locations** — circle area ∝ {cfg['unit']}")
+                components.html(_sensor_map_html(summary_df, cfg["color"]), height=380, scrolling=False)
+            with col_bar:
+                st.markdown(f"**Busiest locations** — top {min(12, len(summary_df))} of {len(summary_df)}")
+                st.altair_chart(_sensor_bar_chart(summary_df, cfg["color"], cfg["unit"]), use_container_width=True)
+
+            with st.expander("📋 Per-sensor data"):
+                st.dataframe(
+                    summary_df.rename(columns={"label": "Location", "total": f"Total {cfg['unit']}", "ident": "Sensor ID"})
+                               [["Location", "Sensor ID", f"Total {cfg['unit']}"]],
+                    use_container_width=True, hide_index=True,
+                )
+
+            if mode_key == "car":
+                st.divider()
+                st.markdown("#### 🌫️ Estimated Emissions (from this traffic data)")
+                st.caption(
+                    "A rule-based CO₂/NOx/PM estimate computed from the vehicle counts above — "
+                    "not a separate data source or transport mode."
+                )
+                _render_emission_section(zone_insee, zone_name)
+                energy_data = _render_energy_section(zone_insee, zone_name)
+
+    st.divider()
+    st.markdown("## 🗺️ Spatial View & Heat Impact")
     st.caption(
-        f"**{len(summary_df)} sensors** reporting in {zone_name} · {period_label.lower()} · "
-        f"busiest: **{summary_df.iloc[0]['label']}** ({_compact(summary_df.iloc[0]['total'])} {cfg['unit']}) · "
-        f"loaded `{filename}`"
+        "The same traffic data above, viewed spatially and extended with a "
+        "rule-based estimate of its thermal contribution."
     )
+    _render_heatmap_section(zone_insee, zone_name)
 
-    col_map, col_bar = st.columns([1, 1])
-    with col_map:
-        st.markdown(f"**Sensor locations** — circle area ∝ {cfg['unit']}")
-        components.html(_sensor_map_html(summary_df, cfg["color"]), height=380, scrolling=False)
-    with col_bar:
-        st.markdown(f"**Busiest locations** — top {min(12, len(summary_df))} of {len(summary_df)}")
-        st.altair_chart(_sensor_bar_chart(summary_df, cfg["color"], cfg["unit"]), use_container_width=True)
+    if energy_data is not None:
+        _render_whatif_section(zone_insee, zone_name, energy_data)
 
-    with st.expander("📋 Per-sensor data"):
-        st.dataframe(
-            summary_df.rename(columns={"label": "Location", "total": f"Total {cfg['unit']}", "ident": "Sensor ID"})
-                       [["Location", "Sensor ID", f"Total {cfg['unit']}"]],
-            use_container_width=True, hide_index=True,
-        )
-
-    if mode_key == "car":
-        st.divider()
-        st.markdown("#### 🌫️ Estimated Emissions (from this traffic data)")
-        st.caption(
-            "A rule-based CO₂/NOx/PM estimate computed from the vehicle counts above — "
-            "not a separate data source or transport mode."
-        )
-        _render_emission_section(zone_insee, zone_name)
-        _render_energy_section(zone_insee, zone_name)
+    with st.expander("⚠️ Known limitations (heat model)"):
+        for item in HEAT_LIMITATIONS:
+            st.markdown(f"- {item}")
 
 
 def render():
@@ -1060,8 +1456,8 @@ def render():
         unsafe_allow_html=True,
     )
 
-    tab_map, tab_hist, tab_forecast, tab_heatmap = st.tabs([
-        "🚋 Tram Live Map", "📊 Mobility Historical", "🔮 Forecast & Simulation", "🔥 Emission Heatmap",
+    tab_map, tab_hist, tab_forecast = st.tabs([
+        "🚋 Tram Live Map", "📊 Mobility Impact Analysis", "🔮 Traffic Forecast",
     ])
     with tab_map:
         _render_map_section(zone_insee)
@@ -1069,5 +1465,3 @@ def render():
         _render_historical_section(zone_insee, zone_name)
     with tab_forecast:
         _render_forecast_section(zone_insee, zone_name)
-    with tab_heatmap:
-        _render_heatmap_section(zone_insee, zone_name)
