@@ -94,7 +94,9 @@ def _fetch_weekday_trip_counts():
 
 
 def compute_bus_emissions_for_zone(zone_insee):
-    """Returns None if no bus lines are mapped for this zone, else:
+    """Returns None if no bus lines are mapped for this zone, or if the live
+    GTFS schedule couldn't be fetched (network/API issue — caller shows a
+    warning in that case via bus_fetch_failed()), else:
     {"total_km": float, "CO2_g":, "NOx_g":, "PM_g":, "Energy_MJ":,
      "per_line": [{"code","route_id","daily_trips","length_km","daily_km","share_pct"}, ...]}
     """
@@ -104,7 +106,12 @@ def compute_bus_emissions_for_zone(zone_insee):
     if not zone_bus_codes:
         return None
 
-    trip_counts = _fetch_weekday_trip_counts()
+    try:
+        trip_counts = _fetch_weekday_trip_counts()
+    except Exception as e:
+        st.session_state["_bus_fetch_error"] = str(e)
+        return None
+    st.session_state.pop("_bus_fetch_error", None)
 
     per_line = []
     total_km = 0.0
@@ -131,3 +138,11 @@ def compute_bus_emissions_for_zone(zone_insee):
         result[f"{pollutant}_g"] = total_km * factor
     result["Energy_MJ"] = total_km * ENERGY_MJ_PER_KM["bus"]
     return result
+
+
+def bus_fetch_failed():
+    """True if the last compute_bus_emissions_for_zone() call in this session
+    returned None because the live GTFS fetch raised, not because the zone
+    has no mapped bus lines. Lets callers show an accurate message instead of
+    the generic 'no bus lines mapped' one."""
+    return "_bus_fetch_error" in st.session_state

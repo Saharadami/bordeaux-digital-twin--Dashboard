@@ -21,7 +21,7 @@ from app_pages.simulation import (
     build_html as build_map_html, MODE_ICON,
 )
 from emissions.emissions_engine import compute_emissions, OUTLIER_MEDIAN_MULTIPLIER
-from emissions.bus_emissions_engine import compute_bus_emissions_for_zone
+from emissions.bus_emissions_engine import compute_bus_emissions_for_zone, bus_fetch_failed
 from emissions.emission_factors import BUS_EMISSION_FACTORS_G_PER_KM, ENERGY_MJ_PER_KM
 from forecasting.traffic_forecasting_engine import forecast_traffic
 from emissions.spatial_heatmap_data import car_heatmap_points, bus_emission_lines, POLLUTANTS
@@ -1067,7 +1067,14 @@ def _render_bus_emission_section(zone_insee, zone_name):
     calendar.txt), not live vehicle counts. See emissions/bus_emissions_engine.py."""
     result = compute_bus_emissions_for_zone(zone_insee)
     if result is None:
-        st.info(f"No bus lines are mapped for {zone_name} yet — see the live map above.")
+        if bus_fetch_failed():
+            st.warning(
+                "Couldn't reach the live GTFS bus schedule (network or API issue) — "
+                "bus emissions/energy and the What-if section aren't available right "
+                "now. Try reloading in a moment."
+            )
+        else:
+            st.info(f"No bus lines are mapped for {zone_name} yet — see the live map above.")
         return
     if result["total_km"] <= 0:
         st.info("No scheduled weekday bus trips found for this zone's lines.")
@@ -1132,10 +1139,17 @@ def _render_energy_section(zone_insee, zone_name):
     car_latest = _latest_csv(TRAFFIC_DIR, zone_slug=zone_name.lower())
     bus_result = compute_bus_emissions_for_zone(zone_insee)
     if not car_latest or bus_result is None or bus_result["total_km"] <= 0:
-        st.info(
-            "Energy Consumption needs both Car Traffic data and a mapped bus network "
-            "for this zone — fetch Car Traffic data above if you haven't yet."
-        )
+        if bus_result is None and bus_fetch_failed():
+            st.warning(
+                "Couldn't reach the live GTFS bus schedule (network or API issue) — "
+                "Energy Consumption and the What-if section aren't available right "
+                "now. Try reloading in a moment."
+            )
+        else:
+            st.info(
+                "Energy Consumption needs both Car Traffic data and a mapped bus network "
+                "for this zone — fetch Car Traffic data above if you haven't yet."
+            )
         return None
 
     car_df = compute_emissions(car_latest)
@@ -1170,9 +1184,10 @@ def _render_energy_section(zone_insee, zone_name):
     with col_info:
         with st.popover("ℹ️"):
             st.write(
-                "This Traffic → Energy → Emissions pathway reflects the same Mobility → "
-                "generates → AirQuality relationship used elsewhere in the project's data "
-                "model, with an explicit Energy step added in between."
+                "This Traffic → Energy → Emissions pathway extends the Mobility → "
+                "generates → AirQuality relationship documented in the Data Model & "
+                "Ontology tab (🔗 Ontology sub-tab), adding an explicit Energy step "
+                "in between."
             )
 
     st.markdown(
@@ -1204,107 +1219,107 @@ def _render_energy_section(zone_insee, zone_name):
 
 
 def _render_whatif_section(zone_insee, zone_name, energy_data):
-    """What-if Scenarios (Traffic Change / Bus Electrification, unchanged
-    logic from the old _render_energy_section) plus a ΔT estimate and two
-    Plotly summary charts — rendered after the spatial/heat map section (not
-    before it), per the tab's final reading order."""
+    """What-if Scenarios (Traffic Change / Bus Electrification) plus a ΔT
+    estimate and two Plotly summary charts. Rendered in its own top-level tab
+    (see render()), independent of the Mode selector in Mobility Impact
+    Analysis, so it doesn't disappear depending on what mode is selected
+    there."""
     car_df = energy_data["car_df"]
     bus_result = energy_data["bus_result"]
     car_daily_mj = energy_data["car_daily_mj"]
     bus_daily_mj = energy_data["bus_daily_mj"]
 
-    with st.expander("🔧 What-if Scenarios", expanded=False):
-        st.caption("Simple rule-based projections — linear scaling, not a calibrated simulation.")
+    st.caption("Simple rule-based projections — linear scaling, not a calibrated simulation.")
 
-        st.markdown("**Traffic Change**")
-        traffic_pct = st.slider(
-            "Traffic Change", min_value=-50, max_value=50, value=0, step=5,
-            format="%d%%", key=f"dash_whatif_traffic_{zone_insee}",
-        )
-        traffic_factor = 1 + traffic_pct / 100
+    st.markdown("**Traffic Change**")
+    traffic_pct = st.slider(
+        "Traffic Change", min_value=-50, max_value=50, value=0, step=5,
+        format="%d%%", key=f"dash_whatif_traffic_{zone_insee}",
+    )
+    traffic_factor = 1 + traffic_pct / 100
 
-        car_co2_g = car_df["CO2_g"].sum()
-        car_nox_g = car_df["NOx_g"].sum()
-        car_pm_g = car_df["PM_g"].sum()
-        car_energy_mj = car_df["Energy_MJ"].sum()
+    car_co2_g = car_df["CO2_g"].sum()
+    car_nox_g = car_df["NOx_g"].sum()
+    car_pm_g = car_df["PM_g"].sum()
+    car_energy_mj = car_df["Energy_MJ"].sum()
 
-        t1, t2, t3, t4 = st.columns(4)
-        t1.metric(
-            "Total CO₂", f"{_fmt_kg(car_co2_g * traffic_factor)} kg",
-            delta=_fmt_kg_signed(car_co2_g * traffic_factor - car_co2_g),
-            delta_color="inverse",
-        )
-        t2.metric(
-            "Total NOx", f"{_fmt_kg(car_nox_g * traffic_factor)} kg",
-            delta=_fmt_kg_signed(car_nox_g * traffic_factor - car_nox_g),
-            delta_color="inverse",
-        )
-        t3.metric(
-            "Total PM", f"{_fmt_kg(car_pm_g * traffic_factor)} kg",
-            delta=_fmt_kg_signed(car_pm_g * traffic_factor - car_pm_g),
-            delta_color="inverse",
-        )
-        t4.metric(
-            "Energy", f"{_compact(car_energy_mj * traffic_factor)} MJ",
-            delta=_compact_signed(car_energy_mj * traffic_factor - car_energy_mj, "MJ"),
-            delta_color="inverse",
-        )
+    t1, t2, t3, t4 = st.columns(4)
+    t1.metric(
+        "Total CO₂", f"{_fmt_kg(car_co2_g * traffic_factor)} kg",
+        delta=_fmt_kg_signed(car_co2_g * traffic_factor - car_co2_g),
+        delta_color="inverse",
+    )
+    t2.metric(
+        "Total NOx", f"{_fmt_kg(car_nox_g * traffic_factor)} kg",
+        delta=_fmt_kg_signed(car_nox_g * traffic_factor - car_nox_g),
+        delta_color="inverse",
+    )
+    t3.metric(
+        "Total PM", f"{_fmt_kg(car_pm_g * traffic_factor)} kg",
+        delta=_fmt_kg_signed(car_pm_g * traffic_factor - car_pm_g),
+        delta_color="inverse",
+    )
+    t4.metric(
+        "Energy", f"{_compact(car_energy_mj * traffic_factor)} MJ",
+        delta=_compact_signed(car_energy_mj * traffic_factor - car_energy_mj, "MJ"),
+        delta_color="inverse",
+    )
 
-        st.divider()
+    st.divider()
 
-        st.markdown("**Bus Fleet Electrification**")
-        electrification_pct = st.slider(
-            "Bus Fleet Electrification", min_value=0, max_value=100, value=0, step=10,
-            format="%d%%", key=f"dash_whatif_electrification_{zone_insee}",
-        )
-        remaining_factor = 1 - electrification_pct / 100
+    st.markdown("**Bus Fleet Electrification**")
+    electrification_pct = st.slider(
+        "Bus Fleet Electrification", min_value=0, max_value=100, value=0, step=10,
+        format="%d%%", key=f"dash_whatif_electrification_{zone_insee}",
+    )
+    remaining_factor = 1 - electrification_pct / 100
 
-        bus_co2_g = bus_result["CO2_g"]
-        bus_nox_g = bus_result["NOx_g"]
-        bus_pm_g = bus_result["PM_g"]
+    bus_co2_g = bus_result["CO2_g"]
+    bus_nox_g = bus_result["NOx_g"]
+    bus_pm_g = bus_result["PM_g"]
 
-        b1, b2, b3 = st.columns(3)
-        b1.metric(
-            "Bus CO₂", f"{_fmt_kg(bus_co2_g * remaining_factor)} kg",
-            delta=_fmt_kg_signed(bus_co2_g * remaining_factor - bus_co2_g),
-            delta_color="inverse",
-        )
-        b2.metric(
-            "Bus NOx", f"{_fmt_kg(bus_nox_g * remaining_factor)} kg",
-            delta=_fmt_kg_signed(bus_nox_g * remaining_factor - bus_nox_g),
-            delta_color="inverse",
-        )
-        b3.metric(
-            "Bus PM", f"{_fmt_kg(bus_pm_g * remaining_factor)} kg",
-            delta=_fmt_kg_signed(bus_pm_g * remaining_factor - bus_pm_g),
-            delta_color="inverse",
-        )
+    b1, b2, b3 = st.columns(3)
+    b1.metric(
+        "Bus CO₂", f"{_fmt_kg(bus_co2_g * remaining_factor)} kg",
+        delta=_fmt_kg_signed(bus_co2_g * remaining_factor - bus_co2_g),
+        delta_color="inverse",
+    )
+    b2.metric(
+        "Bus NOx", f"{_fmt_kg(bus_nox_g * remaining_factor)} kg",
+        delta=_fmt_kg_signed(bus_nox_g * remaining_factor - bus_nox_g),
+        delta_color="inverse",
+    )
+    b3.metric(
+        "Bus PM", f"{_fmt_kg(bus_pm_g * remaining_factor)} kg",
+        delta=_fmt_kg_signed(bus_pm_g * remaining_factor - bus_pm_g),
+        delta_color="inverse",
+    )
 
-        st.divider()
+    st.divider()
 
-        st.markdown("**Estimated Thermal Impact (ΔT)**")
-        st.caption(
-            "Rule-based steady-state estimate — waste heat balanced against the same "
-            "entrainment loss rate used by the heat map above, spread over the zone's "
-            "bounding-box footprint. Not a calibrated absolute reading (see Known "
-            "limitations)."
-        )
-        dt_baseline = _delta_t_celsius(car_daily_mj + bus_daily_mj, zone_insee)
-        dt_traffic = _delta_t_celsius(car_daily_mj * traffic_factor + bus_daily_mj, zone_insee)
-        dt_both = _delta_t_celsius(
-            car_daily_mj * traffic_factor + bus_daily_mj * remaining_factor, zone_insee
-        )
+    st.markdown("**Estimated Thermal Impact (ΔT)**")
+    st.caption(
+        "Rule-based steady-state estimate — waste heat balanced against the same "
+        "entrainment loss rate used by the heat map above, spread over the zone's "
+        "bounding-box footprint. Not a calibrated absolute reading (see Known "
+        "limitations)."
+    )
+    dt_baseline = _delta_t_celsius(car_daily_mj + bus_daily_mj, zone_insee)
+    dt_traffic = _delta_t_celsius(car_daily_mj * traffic_factor + bus_daily_mj, zone_insee)
+    dt_both = _delta_t_celsius(
+        car_daily_mj * traffic_factor + bus_daily_mj * remaining_factor, zone_insee
+    )
 
-        d1, d2, d3 = st.columns(3)
-        d1.metric("Today", f"{dt_baseline:.3f} °C")
-        d2.metric(
-            "With Traffic Change", f"{dt_traffic:.3f} °C",
-            delta=f"{dt_traffic - dt_baseline:+.3f} °C", delta_color="inverse",
-        )
-        d3.metric(
-            "+ Bus Electrification", f"{dt_both:.3f} °C",
-            delta=f"{dt_both - dt_traffic:+.3f} °C", delta_color="inverse",
-        )
+    d1, d2, d3 = st.columns(3)
+    d1.metric("Today", f"{dt_baseline:.3f} °C")
+    d2.metric(
+        "With Traffic Change", f"{dt_traffic:.3f} °C",
+        delta=f"{dt_traffic - dt_baseline:+.3f} °C", delta_color="inverse",
+    )
+    d3.metric(
+        "+ Bus Electrification", f"{dt_both:.3f} °C",
+        delta=f"{dt_both - dt_traffic:+.3f} °C", delta_color="inverse",
+    )
 
     st.markdown("### 📊 Summary")
     st.caption(
@@ -1343,11 +1358,9 @@ def _render_historical_section(zone_insee, zone_name):
         key="dash_hist_mode",
     )
     cfg = MODES[mode_key]
-    energy_data = None
 
     if cfg["kind"] == "bus_emission":
         _render_bus_emission_section(zone_insee, zone_name)
-        energy_data = _render_energy_section(zone_insee, zone_name)
 
     elif cfg["kind"] == "note":
         note = cfg["note"]
@@ -1412,7 +1425,6 @@ def _render_historical_section(zone_insee, zone_name):
                     "not a separate data source or transport mode."
                 )
                 _render_emission_section(zone_insee, zone_name)
-                energy_data = _render_energy_section(zone_insee, zone_name)
 
     st.divider()
     st.markdown("## 🗺️ Spatial View & Heat Impact")
@@ -1422,12 +1434,25 @@ def _render_historical_section(zone_insee, zone_name):
     )
     _render_heatmap_section(zone_insee, zone_name)
 
-    if energy_data is not None:
-        _render_whatif_section(zone_insee, zone_name, energy_data)
-
     with st.expander("⚠️ Known limitations (heat model)"):
         for item in HEAT_LIMITATIONS:
             st.markdown(f"- {item}")
+
+
+def _render_whatif_tab(zone_insee, zone_name):
+    """Traffic-change / bus-electrification projections for this zone — its
+    own top-level tab, independent of the Mode selector in Mobility Impact
+    Analysis, so it's always reachable the same way regardless of which mode
+    was last selected there."""
+    st.caption(
+        "How much CO₂/NOx/PM/energy would change under a traffic-volume shift "
+        "or bus-fleet electrification — needs both Car Traffic data and a "
+        "mapped bus network for this zone (fetched from the Mobility Impact "
+        "Analysis tab)."
+    )
+    energy_data = _render_energy_section(zone_insee, zone_name)
+    if energy_data is not None:
+        _render_whatif_section(zone_insee, zone_name, energy_data)
 
 
 def render():
@@ -1456,12 +1481,14 @@ def render():
         unsafe_allow_html=True,
     )
 
-    tab_map, tab_hist, tab_forecast = st.tabs([
-        "🚋 Tram Live Map", "📊 Mobility Impact Analysis", "🔮 Traffic Forecast",
+    tab_map, tab_hist, tab_whatif, tab_forecast = st.tabs([
+        "🚋 Tram Live Map", "📊 Mobility Impact Analysis", "🔧 What-if Scenarios", "🔮 Traffic Forecast",
     ])
     with tab_map:
         _render_map_section(zone_insee)
     with tab_hist:
         _render_historical_section(zone_insee, zone_name)
+    with tab_whatif:
+        _render_whatif_tab(zone_insee, zone_name)
     with tab_forecast:
         _render_forecast_section(zone_insee, zone_name)
