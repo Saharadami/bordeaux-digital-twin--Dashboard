@@ -1,0 +1,602 @@
+@prefix bto: <http://bordeaux-twin.org/ontology#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+bto:BordeauxTwinOntology a owl:Ontology ;
+    rdfs:label "Bordeaux Digital Twin Cross-Domain Ontology" ;
+    rdfs:comment "OWL ontology describing the 10 data domains of the Bordeaux Metropole digital twin, their 28 semantic relationships (with confidence level) and 6 causal chains connecting them. Generated from app_pages/ontology.py." .
+
+bto:hasConfidenceLevel a owl:AnnotationProperty ;
+    rdfs:label "has confidence level" ;
+    rdfs:comment "Confidence level of a relationship: Strong, Medium or Weak." .
+
+bto:partOfCausalChain a owl:ObjectProperty ;
+    rdfs:label "part of causal chain" ;
+    rdfs:domain bto:ChainStep ;
+    rdfs:range bto:CausalChain ;
+    owl:inverseOf bto:hasStep .
+
+bto:stepDomain a owl:ObjectProperty ;
+    rdfs:label "step domain" ;
+    rdfs:domain bto:ChainStep .
+
+bto:stepOrder a owl:DatatypeProperty ;
+    rdfs:label "step order" ;
+    rdfs:domain bto:ChainStep ;
+    rdfs:range xsd:integer .
+
+bto:stepRole a owl:DatatypeProperty ;
+    rdfs:label "step role" ;
+    rdfs:domain bto:ChainStep ;
+    rdfs:range xsd:string .
+
+bto:absorbs a owl:ObjectProperty ;
+    rdfs:label "absorbs" ;
+    rdfs:domain bto:Environment ;
+    rdfs:range bto:AirQuality .
+
+bto:affects a owl:ObjectProperty ;
+    rdfs:label "affects" ;
+    rdfs:domain bto:Mobility ;
+    rdfs:range bto:Water .
+
+bto:assessedBy a owl:ObjectProperty ;
+    rdfs:label "assessed by" ;
+    rdfs:domain bto:Buildings ;
+    rdfs:range bto:Energy .
+
+bto:calibratedBy a owl:ObjectProperty ;
+    rdfs:label "calibrated by" ;
+    rdfs:domain bto:Weather ;
+    rdfs:range bto:Weather .
+
+bto:connectedTo a owl:ObjectProperty ;
+    rdfs:label "connected to" ;
+    rdfs:domain bto:Mobility ;
+    rdfs:range bto:OnlineDataSet .
+
+bto:controls a owl:ObjectProperty ;
+    rdfs:label "controls" ;
+    rdfs:domain bto:Weather ;
+    rdfs:range bto:AirQuality .
+
+bto:dependsOn a owl:ObjectProperty ;
+    rdfs:label "depends on" ;
+    rdfs:domain bto:Mobility ;
+    rdfs:range bto:Sensors .
+
+bto:determinedBy a owl:ObjectProperty ;
+    rdfs:label "determined by" ;
+    rdfs:domain bto:Energy ;
+    rdfs:range bto:Buildings .
+
+bto:determines a owl:ObjectProperty ;
+    rdfs:label "determines" ;
+    rdfs:domain bto:Weather ;
+    rdfs:range bto:Energy .
+
+bto:devalues a owl:ObjectProperty ;
+    rdfs:label "devalues" ;
+    rdfs:domain bto:AirQuality ;
+    rdfs:range bto:Buildings .
+
+bto:drivenBy a owl:ObjectProperty ;
+    rdfs:label "driven by" ;
+    rdfs:domain bto:Energy ;
+    rdfs:range bto:Population .
+
+bto:drives a owl:ObjectProperty ;
+    rdfs:label "drives" ;
+    rdfs:domain bto:Weather ;
+    rdfs:range bto:Water .
+
+bto:endangers a owl:ObjectProperty ;
+    rdfs:label "endangers" ;
+    rdfs:domain bto:Water ;
+    rdfs:range bto:Buildings .
+
+bto:exposedTo a owl:ObjectProperty ;
+    rdfs:label "exposed to" ;
+    rdfs:domain bto:Population ;
+    rdfs:range bto:AirQuality .
+
+bto:fedBy a owl:ObjectProperty ;
+    rdfs:label "fed by" ;
+    rdfs:domain bto:Mobility ;
+    rdfs:range bto:OnlineDataSet .
+
+bto:feeds a owl:ObjectProperty ;
+    rdfs:label "feeds" ;
+    rdfs:domain bto:Sensors ;
+    rdfs:range bto:AirQuality .
+
+bto:generates a owl:ObjectProperty ;
+    rdfs:label "generates" ;
+    rdfs:domain bto:Mobility ;
+    rdfs:range bto:AirQuality .
+
+bto:hasStep a owl:ObjectProperty ;
+    rdfs:label "has step" ;
+    rdfs:domain bto:CausalChain ;
+    rdfs:range bto:ChainStep .
+
+bto:impacts a owl:ObjectProperty ;
+    rdfs:label "impacts" ;
+    rdfs:domain bto:AirQuality ;
+    rdfs:range bto:Population .
+
+bto:influencedBy a owl:ObjectProperty ;
+    rdfs:label "influenced by" ;
+    rdfs:domain bto:Mobility ;
+    rdfs:range bto:Weather .
+
+bto:interactsWith a owl:ObjectProperty ;
+    rdfs:label "interacts with" ;
+    rdfs:domain bto:Water ;
+    rdfs:range bto:Environment .
+
+bto:locatedIn a owl:ObjectProperty ;
+    rdfs:label "located in" ;
+    rdfs:domain bto:Buildings ;
+    rdfs:range bto:Population .
+
+bto:modulatedBy a owl:ObjectProperty ;
+    rdfs:label "modulated by" ;
+    rdfs:domain bto:AirQuality ;
+    rdfs:range bto:Environment .
+
+bto:monitors a owl:ObjectProperty ;
+    rdfs:label "monitors" ;
+    rdfs:domain bto:Sensors ;
+    rdfs:range bto:Water .
+
+bto:shapedBy a owl:ObjectProperty ;
+    rdfs:label "shaped by" ;
+    rdfs:domain bto:Mobility ;
+    rdfs:range bto:Population .
+
+bto:stresses a owl:ObjectProperty ;
+    rdfs:label "stresses" ;
+    rdfs:domain bto:Mobility ;
+    rdfs:range bto:Environment .
+
+bto:supports a owl:ObjectProperty ;
+    rdfs:label "supports" ;
+    rdfs:domain bto:Environment ;
+    rdfs:range bto:Population .
+
+bto:threatens a owl:ObjectProperty ;
+    rdfs:label "threatens" ;
+    rdfs:domain bto:Weather ;
+    rdfs:range bto:Population .
+
+bto:trackedBy a owl:ObjectProperty ;
+    rdfs:label "tracked by" ;
+    rdfs:domain bto:Energy ;
+    rdfs:range bto:Sensors .
+
+bto:ChainBuildingsEnergyPerformanceEmissions a bto:CausalChain ;
+    rdfs:label "Buildings → Energy Performance → Emissions" ;
+    bto:hasStep [ a bto:ChainStep ;
+            bto:partOfCausalChain bto:ChainBuildingsEnergyPerformanceEmissions ;
+            bto:stepDomain bto:Energy ;
+            bto:stepOrder 1 ;
+            bto:stepRole "quantify" ;
+            rdfs:comment "kWh consumption per m² measured at substation level" ],
+        [ a bto:ChainStep ;
+            bto:partOfCausalChain bto:ChainBuildingsEnergyPerformanceEmissions ;
+            bto:stepDomain bto:AirQuality ;
+            bto:stepOrder 2 ;
+            bto:stepRole "track" ;
+            rdfs:comment "Grid carbon intensity links consumption to GHG" ],
+        [ a bto:ChainStep ;
+            bto:partOfCausalChain bto:ChainBuildingsEnergyPerformanceEmissions ;
+            bto:stepDomain bto:Buildings ;
+            bto:stepOrder 0 ;
+            bto:stepRole "define" ;
+            rdfs:comment "DPE class (A-G) sets the energy performance baseline" ],
+        [ a bto:ChainStep ;
+            bto:partOfCausalChain bto:ChainBuildingsEnergyPerformanceEmissions ;
+            bto:stepDomain bto:Environment ;
+            bto:stepOrder 3 ;
+            bto:stepRole "record" ;
+            rdfs:comment "Territorial emissions inventory aggregates all sectors" ] .
+
+bto:ChainPopulationDensityUrbanDemand a bto:CausalChain ;
+    rdfs:label "Population Density → Urban Demand" ;
+    bto:hasStep [ a bto:ChainStep ;
+            bto:partOfCausalChain bto:ChainPopulationDensityUrbanDemand ;
+            bto:stepDomain bto:Mobility ;
+            bto:stepOrder 1 ;
+            bto:stepRole "absorb" ;
+            rdfs:comment "Road network and PT lines carry the demand" ],
+        [ a bto:ChainStep ;
+            bto:partOfCausalChain bto:ChainPopulationDensityUrbanDemand ;
+            bto:stepDomain bto:AirQuality ;
+            bto:stepOrder 3 ;
+            bto:stepRole "degrade" ;
+            rdfs:comment "High density + traffic → elevated NO2 exposure" ],
+        [ a bto:ChainStep ;
+            bto:partOfCausalChain bto:ChainPopulationDensityUrbanDemand ;
+            bto:stepDomain bto:Energy ;
+            bto:stepOrder 2 ;
+            bto:stepRole "consume" ;
+            rdfs:comment "Residential density drives electricity and gas use" ],
+        [ a bto:ChainStep ;
+            bto:partOfCausalChain bto:ChainPopulationDensityUrbanDemand ;
+            bto:stepDomain bto:Population ;
+            bto:stepOrder 0 ;
+            bto:stepRole "generate" ;
+            rdfs:comment "Dense IRIS zones produce high trip generation rates" ] .
+
+bto:ChainPrecipitationFloodRiskInfrastructure a bto:CausalChain ;
+    rdfs:label "Precipitation → Flood Risk → Infrastructure" ;
+    bto:hasStep [ a bto:ChainStep ;
+            bto:partOfCausalChain bto:ChainPrecipitationFloodRiskInfrastructure ;
+            bto:stepDomain bto:Weather ;
+            bto:stepOrder 0 ;
+            bto:stepRole "trigger" ;
+            rdfs:comment "Upstream rainfall in Pyrénées / Massif Central" ],
+        [ a bto:ChainStep ;
+            bto:partOfCausalChain bto:ChainPrecipitationFloodRiskInfrastructure ;
+            bto:stepDomain bto:Water ;
+            bto:stepOrder 1 ;
+            bto:stepRole "respond" ;
+            rdfs:comment "Garonne level rises at Bordeaux with 6-48h lag" ],
+        [ a bto:ChainStep ;
+            bto:partOfCausalChain bto:ChainPrecipitationFloodRiskInfrastructure ;
+            bto:stepDomain bto:Environment ;
+            bto:stepOrder 2 ;
+            bto:stepRole "retain" ;
+            rdfs:comment "Green spaces and forests absorb runoff" ],
+        [ a bto:ChainStep ;
+            bto:partOfCausalChain bto:ChainPrecipitationFloodRiskInfrastructure ;
+            bto:stepDomain bto:Mobility ;
+            bto:stepOrder 3 ;
+            bto:stepRole "disrupt" ;
+            rdfs:comment "Flood zones close roads and reroute traffic" ] .
+
+bto:ChainSensorNetworkRealTimeDigitalTwin a bto:CausalChain ;
+    rdfs:label "Sensor Network → Real-time Digital Twin" ;
+    bto:hasStep [ a bto:ChainStep ;
+            bto:partOfCausalChain bto:ChainSensorNetworkRealTimeDigitalTwin ;
+            bto:stepDomain bto:Sensors ;
+            bto:stepOrder 0 ;
+            bto:stepRole "observe" ;
+            rdfs:comment "Physical sensors measure traffic, AQ, river level" ],
+        [ a bto:ChainStep ;
+            bto:partOfCausalChain bto:ChainSensorNetworkRealTimeDigitalTwin ;
+            bto:stepDomain bto:Water ;
+            bto:stepOrder 3 ;
+            bto:stepRole "alert" ;
+            rdfs:comment "Flood alert level updated from river gauge data" ],
+        [ a bto:ChainStep ;
+            bto:partOfCausalChain bto:ChainSensorNetworkRealTimeDigitalTwin ;
+            bto:stepDomain bto:Mobility ;
+            bto:stepOrder 2 ;
+            bto:stepRole "reflect" ;
+            rdfs:comment "TrafficMeasure and TravelTime updated continuously" ],
+        [ a bto:ChainStep ;
+            bto:partOfCausalChain bto:ChainSensorNetworkRealTimeDigitalTwin ;
+            bto:stepDomain bto:OnlineDataSet ;
+            bto:stepOrder 1 ;
+            bto:stepRole "stream" ;
+            rdfs:comment "Real-time APIs ingest measurements every 2-10 min" ] .
+
+bto:ChainUrbanTrafficAirPollutionPublicHealth a bto:CausalChain ;
+    rdfs:label "Urban Traffic → Air Pollution → Public Health" ;
+    bto:hasStep [ a bto:ChainStep ;
+            bto:partOfCausalChain bto:ChainUrbanTrafficAirPollutionPublicHealth ;
+            bto:stepDomain bto:Population ;
+            bto:stepOrder 3 ;
+            bto:stepRole "suffer" ;
+            rdfs:comment "Long-term exposure → DALYs and premature deaths" ],
+        [ a bto:ChainStep ;
+            bto:partOfCausalChain bto:ChainUrbanTrafficAirPollutionPublicHealth ;
+            bto:stepDomain bto:Sensors ;
+            bto:stepOrder 0 ;
+            bto:stepRole "measure" ;
+            rdfs:comment "Loop detectors count vehicles and measure speed" ],
+        [ a bto:ChainStep ;
+            bto:partOfCausalChain bto:ChainUrbanTrafficAirPollutionPublicHealth ;
+            bto:stepDomain bto:AirQuality ;
+            bto:stepOrder 2 ;
+            bto:stepRole "produce" ;
+            rdfs:comment "NO2 and PM2.5 concentrations rise near busy roads" ],
+        [ a bto:ChainStep ;
+            bto:partOfCausalChain bto:ChainUrbanTrafficAirPollutionPublicHealth ;
+            bto:stepDomain bto:Mobility ;
+            bto:stepOrder 1 ;
+            bto:stepRole "generate" ;
+            rdfs:comment "Traffic volume × fleet emission factors" ] .
+
+bto:ChainWeatherEnergyDemandCarbon a bto:CausalChain ;
+    rdfs:label "Weather → Energy Demand & Carbon" ;
+    bto:hasStep [ a bto:ChainStep ;
+            bto:partOfCausalChain bto:ChainWeatherEnergyDemandCarbon ;
+            bto:stepDomain bto:AirQuality ;
+            bto:stepOrder 3 ;
+            bto:stepRole "receive" ;
+            rdfs:comment "Grid carbon intensity affects urban GHG footprint" ],
+        [ a bto:ChainStep ;
+            bto:partOfCausalChain bto:ChainWeatherEnergyDemandCarbon ;
+            bto:stepDomain bto:Energy ;
+            bto:stepOrder 1 ;
+            bto:stepRole "consume" ;
+            rdfs:comment "Grid load spikes; solar production varies with radiation" ],
+        [ a bto:ChainStep ;
+            bto:partOfCausalChain bto:ChainWeatherEnergyDemandCarbon ;
+            bto:stepDomain bto:Weather ;
+            bto:stepOrder 0 ;
+            bto:stepRole "drive" ;
+            rdfs:comment "Temperature extremes create heating/cooling peaks" ],
+        [ a bto:ChainStep ;
+            bto:partOfCausalChain bto:ChainWeatherEnergyDemandCarbon ;
+            bto:stepDomain bto:Buildings ;
+            bto:stepOrder 2 ;
+            bto:stepRole "determine" ;
+            rdfs:comment "DPE class modulates actual consumption per building" ] .
+
+bto:OnlineDataSet a owl:Class ;
+    rdfs:label "Online DataSet" .
+
+bto:CausalChain a owl:Class ;
+    rdfs:label "Causal Chain" ;
+    rdfs:comment "An ordered sequence of domain-level steps describing a cross-domain cause-and-effect narrative in the digital twin." .
+
+bto:Sensors a owl:Class ;
+    rdfs:label "Sensors" ;
+    bto:feeds bto:AirQuality ;
+    bto:monitors bto:Water .
+
+bto:Buildings a owl:Class ;
+    rdfs:label "Buildings" ;
+    bto:assessedBy bto:Energy ;
+    bto:locatedIn bto:Population .
+
+bto:Energy a owl:Class ;
+    rdfs:label "Energy" ;
+    bto:determinedBy bto:Buildings ;
+    bto:drivenBy bto:Population ;
+    bto:trackedBy bto:Sensors .
+
+bto:Environment a owl:Class ;
+    rdfs:label "Environment" ;
+    bto:absorbs bto:AirQuality ;
+    bto:supports bto:Population .
+
+bto:Water a owl:Class ;
+    rdfs:label "Water" ;
+    bto:endangers bto:Buildings ;
+    bto:interactsWith bto:Environment .
+
+bto:Weather a owl:Class ;
+    rdfs:label "Weather" ;
+    bto:calibratedBy bto:Weather ;
+    bto:controls bto:AirQuality ;
+    bto:determines bto:Energy ;
+    bto:drives bto:Water ;
+    bto:threatens bto:Population .
+
+bto:Mobility a owl:Class ;
+    rdfs:label "Mobility" ;
+    bto:affects bto:Water ;
+    bto:connectedTo bto:OnlineDataSet ;
+    bto:dependsOn bto:Sensors ;
+    bto:fedBy bto:OnlineDataSet ;
+    bto:generates bto:AirQuality ;
+    bto:influencedBy bto:Weather ;
+    bto:shapedBy bto:Population ;
+    bto:stresses bto:Environment .
+
+bto:Population a owl:Class ;
+    rdfs:label "Population" ;
+    bto:exposedTo bto:AirQuality .
+
+bto:AirQuality a owl:Class ;
+    rdfs:label "AirQuality" ;
+    bto:devalues bto:Buildings ;
+    bto:impacts bto:Population ;
+    bto:modulatedBy bto:Environment .
+
+bto:ChainStep a owl:Class ;
+    rdfs:label "Chain Step" .
+
+[] a rdf:Statement ;
+    bto:hasConfidenceLevel "Strong" ;
+    rdf:object bto:Population ;
+    rdf:predicate bto:shapedBy ;
+    rdf:subject bto:Mobility ;
+    rdfs:comment "Population density and commuting patterns determine traffic demand" .
+
+[] a rdf:Statement ;
+    bto:hasConfidenceLevel "Weak" ;
+    rdf:object bto:Buildings ;
+    rdf:predicate bto:devalues ;
+    rdf:subject bto:AirQuality ;
+    rdfs:comment "Poor air quality in a zone negatively affects real estate values" .
+
+[] a rdf:Statement ;
+    bto:hasConfidenceLevel "Strong" ;
+    rdf:object bto:AirQuality ;
+    rdf:predicate bto:generates ;
+    rdf:subject bto:Mobility ;
+    rdfs:comment "Vehicle emissions are the primary source of NO2 and PM10/PM2.5 in urban areas" .
+
+[] a rdf:Statement ;
+    bto:hasConfidenceLevel "Strong" ;
+    rdf:object bto:AirQuality ;
+    rdf:predicate bto:feeds ;
+    rdf:subject bto:Sensors ;
+    rdfs:comment "Atmo NA monitoring stations produce all AQ time-series measurements" .
+
+[] a rdf:Statement ;
+    bto:hasConfidenceLevel "Strong" ;
+    rdf:object bto:Population ;
+    rdf:predicate bto:drivenBy ;
+    rdf:subject bto:Energy ;
+    rdfs:comment "Population density is the primary driver of residential energy consumption" .
+
+[] a rdf:Statement ;
+    bto:hasConfidenceLevel "Strong" ;
+    rdf:object bto:AirQuality ;
+    rdf:predicate bto:controls ;
+    rdf:subject bto:Weather ;
+    rdfs:comment "Wind dispersion and temperature inversions govern pollutant concentration" .
+
+[] a rdf:Statement ;
+    bto:hasConfidenceLevel "Weak" ;
+    rdf:object bto:Population ;
+    rdf:predicate bto:supports ;
+    rdf:subject bto:Environment ;
+    rdfs:comment "Green space accessibility correlates with quality of life indicators" .
+
+[] a rdf:Statement ;
+    bto:hasConfidenceLevel "Strong" ;
+    rdf:object bto:Environment ;
+    rdf:predicate bto:modulatedBy ;
+    rdf:subject bto:AirQuality ;
+    rdfs:comment "Tree canopy absorbs PM; industrial sites emit NOx and SO2" .
+
+[] a rdf:Statement ;
+    bto:hasConfidenceLevel "Medium" ;
+    rdf:object bto:AirQuality ;
+    rdf:predicate bto:exposedTo ;
+    rdf:subject bto:Population ;
+    rdfs:comment "Gridded AQ model combined with IRIS population gives exposure per zone" .
+
+[] a rdf:Statement ;
+    bto:hasConfidenceLevel "Strong" ;
+    rdf:object bto:Buildings ;
+    rdf:predicate bto:determinedBy ;
+    rdf:subject bto:Energy ;
+    rdfs:comment "DPE class and floor surface determine residential heating/cooling demand" .
+
+[] a rdf:Statement ;
+    bto:hasConfidenceLevel "Strong" ;
+    rdf:object bto:Environment ;
+    rdf:predicate bto:interactsWith ;
+    rdf:subject bto:Water ;
+    rdfs:comment "Flood zones, green infrastructure and hydrographic network are deeply linked" .
+
+[] a rdf:Statement ;
+    bto:hasConfidenceLevel "Medium" ;
+    rdf:object bto:OnlineDataSet ;
+    rdf:predicate bto:connectedTo ;
+    rdf:subject bto:Mobility ;
+    rdfs:comment "Online datasets are the real-time source layer for mobility entities" .
+
+[] a rdf:Statement ;
+    bto:hasConfidenceLevel "Medium" ;
+    rdf:object bto:Energy ;
+    rdf:predicate bto:assessedBy ;
+    rdf:subject bto:Buildings ;
+    rdfs:comment "Solar cadastre evaluates rooftop PV potential per building" .
+
+[] a rdf:Statement ;
+    bto:hasConfidenceLevel "Weak" ;
+    rdf:object bto:Buildings ;
+    rdf:predicate bto:endangers ;
+    rdf:subject bto:Water ;
+    rdfs:comment "Flood zones create risk of damage to building stock" .
+
+[] a rdf:Statement ;
+    bto:hasConfidenceLevel "Weak" ;
+    rdf:object bto:Water ;
+    rdf:predicate bto:affects ;
+    rdf:subject bto:Mobility ;
+    rdfs:comment "Flood events close roads and force traffic rerouting" .
+
+[] a rdf:Statement ;
+    bto:hasConfidenceLevel "Medium" ;
+    rdf:object bto:Sensors ;
+    rdf:predicate bto:trackedBy ;
+    rdf:subject bto:Energy ;
+    rdfs:comment "Smart meters and grid sensors monitor real-time electricity consumption" .
+
+[] a rdf:Statement ;
+    bto:hasConfidenceLevel "Weak" ;
+    rdf:object bto:Population ;
+    rdf:predicate bto:threatens ;
+    rdf:subject bto:Weather ;
+    rdfs:comment "Extreme heat creates vulnerability especially for elderly populations" .
+
+[] a rdf:Statement ;
+    bto:hasConfidenceLevel "Strong" ;
+    rdf:object bto:Sensors ;
+    rdf:predicate bto:dependsOn ;
+    rdf:subject bto:Mobility ;
+    rdfs:comment "All traffic measurements originate from physical loop detectors and counters" .
+
+[] a rdf:Statement ;
+    bto:hasConfidenceLevel "Weak" ;
+    rdf:object bto:Environment ;
+    rdf:predicate bto:stresses ;
+    rdf:subject bto:Mobility ;
+    rdfs:comment "Vehicle emissions contribute to urban tree canopy stress" .
+
+[] a rdf:Statement ;
+    bto:hasConfidenceLevel "Strong" ;
+    rdf:object bto:Water ;
+    rdf:predicate bto:drives ;
+    rdf:subject bto:Weather ;
+    rdfs:comment "Upstream precipitation controls Garonne river level with 6-48h lag" .
+
+[] a rdf:Statement ;
+    bto:hasConfidenceLevel "Strong" ;
+    rdf:object bto:Water ;
+    rdf:predicate bto:monitors ;
+    rdf:subject bto:Sensors ;
+    rdfs:comment "Vigicrues station O972001001 produces all Garonne river level data" .
+
+[] a rdf:Statement ;
+    bto:hasConfidenceLevel "Strong" ;
+    rdf:object bto:Population ;
+    rdf:predicate bto:impacts ;
+    rdf:subject bto:AirQuality ;
+    rdfs:comment "Long-term PM2.5 and NO2 exposure causes premature deaths and DALYs" .
+
+[] a rdf:Statement ;
+    bto:hasConfidenceLevel "Strong" ;
+    rdf:object bto:Population ;
+    rdf:predicate bto:locatedIn ;
+    rdf:subject bto:Buildings ;
+    rdfs:comment "Every building falls within an IRIS zone — spatial link to demographics" .
+
+[] a rdf:Statement ;
+    bto:hasConfidenceLevel "Strong" ;
+    rdf:object bto:OnlineDataSet ;
+    rdf:predicate bto:fedBy ;
+    rdf:subject bto:Mobility ;
+    rdfs:comment "Real-time traffic and bike feeds are the ingestion layer for mobility data" .
+
+[] a rdf:Statement ;
+    bto:hasConfidenceLevel "Strong" ;
+    rdf:object bto:Weather ;
+    rdf:predicate bto:influencedBy ;
+    rdf:subject bto:Mobility ;
+    rdfs:comment "Rain, fog, ice and heat directly alter traffic flow and modal choices" .
+
+[] a rdf:Statement ;
+    bto:hasConfidenceLevel "Strong" ;
+    rdf:object bto:Energy ;
+    rdf:predicate bto:determines ;
+    rdf:subject bto:Weather ;
+    rdfs:comment "Temperature drives heating/cooling demand; solar radiation drives PV output" .
+
+[] a rdf:Statement ;
+    bto:hasConfidenceLevel "Medium" ;
+    rdf:object bto:Weather ;
+    rdf:predicate bto:calibratedBy ;
+    rdf:subject bto:Weather ;
+    rdfs:comment "ERA5 reanalysis calibrates AROME forecast model — internal data flow" .
+
+[] a rdf:Statement ;
+    bto:hasConfidenceLevel "Medium" ;
+    rdf:object bto:AirQuality ;
+    rdf:predicate bto:absorbs ;
+    rdf:subject bto:Environment ;
+    rdfs:comment "Urban tree cover reduces PM and CO2 concentrations" .
+

@@ -5,3 +5,5 @@ altair==6.2.1
 requests==2.34.2
 gtfs-realtime-bindings==2.0.0
 plotly==6.9.0
+rdflib==7.6.0
+pyvis==0.3.2

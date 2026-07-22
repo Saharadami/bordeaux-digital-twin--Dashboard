@@ -1,6 +1,7 @@
 import streamlit as st
 import streamlit.components.v1 as components
-import math
+from pyvis.network import Network
+from app_pages.data_models import RELATIONS, P3_RELATIONS
 
 DOMAIN_META = {
     "Mobility":       {"icon": "🚗", "color": "#e8593c"},
@@ -201,68 +202,197 @@ def render_table():
         )
 
 
-def render_graph():
-    domains = list(DOMAIN_META.keys())
-    n = len(domains)
-    positions = {}
-    cx, cy, r = 480, 430, 310
-    for i, d in enumerate(domains):
-        angle = 2 * math.pi * i / n - math.pi / 2
-        positions[d] = (cx + r * math.cos(angle), cy + r * math.sin(angle))
+_EDGE_DASHES = {"Strong": False, "Medium": [8, 4], "Weak": [2, 4]}
+_EDGE_WIDTH  = {"Strong": 3.5, "Medium": 2, "Weak": 1}
+_DIM_COLOR = "#e2e2e2"
+_DIM_EDGE_COLOR = "#dddddd"
+_DIM_FONT_COLOR = "#bbbbbb"
 
-    svg_lines = []
-    for f, rel, t, strength, explanation in ONTO_RELATIONS:
-        if f == t or f not in positions or t not in positions:
-            continue
-        x1, y1 = positions[f]
-        x2, y2 = positions[t]
-        color = STRENGTH_COLORS.get(strength, "#ccc")
-        w = {"Strong": 3, "Medium": 1.8, "Weak": 1}[strength]
-        dash = "" if strength == "Strong" else ('stroke-dasharray="6,3"' if strength == "Medium" else 'stroke-dasharray="3,5"')
-        svg_lines.append(
-            f'<line x1="{x1:.0f}" y1="{y1:.0f}" x2="{x2:.0f}" y2="{y2:.0f}" '
-            f'stroke="{color}" stroke-width="{w}" opacity="0.6" {dash}/>'
+
+def _build_domain_graph_html(selected_domain=None):
+    domains = list(DOMAIN_META.keys())
+    highlight_active = selected_domain in domains
+
+    neighbors = set()
+    if highlight_active:
+        neighbors.add(selected_domain)
+        for f, rel, t, strength, explanation in ONTO_RELATIONS:
+            if f == t or f not in domains or t not in domains:
+                continue
+            if f == selected_domain:
+                neighbors.add(t)
+            elif t == selected_domain:
+                neighbors.add(f)
+
+    net = Network(height="950px", width="100%", directed=True,
+                  bgcolor="#ffffff", font_color="#333333", cdn_resources="in_line")
+    net.barnes_hut(gravity=-4200, central_gravity=0.1, spring_length=300,
+                    spring_strength=0.015, damping=0.2, overlap=0.7)
+
+    for d in domains:
+        meta = DOMAIN_META[d]
+        p1_total = sum(count for f, t, p, count, *_ in RELATIONS if p == "P1" and (f == d or t == d))
+        is_dim = highlight_active and d not in neighbors
+        is_selected = highlight_active and d == selected_domain
+        net.add_node(
+            d,
+            label=f"{meta['icon']} {d}\n{p1_total} P1 links",
+            title=f"{d} — {p1_total} P1 relationship links",
+            color={
+                "background": _DIM_COLOR if is_dim else meta["color"],
+                "border": "#cccccc" if is_dim else meta["color"],
+            },
+            size=18 + p1_total * 1.4,
+            font={"size": 13, "face": "arial", "color": _DIM_FONT_COLOR if is_dim else "#222222"},
+            borderWidth=4 if is_selected else 2,
         )
 
-    svg_nodes = []
-    for d, (x, y) in positions.items():
-        meta = DOMAIN_META[d]
-        color = meta["color"]
-        icon = meta["icon"]
-        svg_nodes.append(f'''
-        <g>
-          <circle cx="{x:.0f}" cy="{y:.0f}" r="46" fill="{color}" opacity="0.12" stroke="{color}" stroke-width="2"/>
-          <text x="{x:.0f}" y="{y-14:.0f}" text-anchor="middle" font-size="22">{icon}</text>
-          <text x="{x:.0f}" y="{y+4:.0f}" text-anchor="middle" font-size="10" font-weight="bold" fill="{color}">{d}</text>
-        </g>''')
+    for f, rel, t, strength, explanation in ONTO_RELATIONS:
+        if f == t or f not in domains or t not in domains:
+            continue
+        touches_selected = highlight_active and (f == selected_domain or t == selected_domain)
+        is_dim = highlight_active and not touches_selected
+        net.add_edge(
+            f, t,
+            label=rel,
+            title=explanation,
+            color=_DIM_EDGE_COLOR if is_dim else STRENGTH_COLORS.get(strength, "#999"),
+            width=1 if is_dim else _EDGE_WIDTH.get(strength, 1.5),
+            dashes=_EDGE_DASHES.get(strength, False),
+            arrows="to",
+            font={"size": 9, "color": _DIM_FONT_COLOR if is_dim else "#444444",
+                  "strokeWidth": 3, "strokeColor": "#ffffff", "align": "middle"},
+            smooth={"type": "dynamic"},
+        )
 
-    svg = f"""<svg width="960" height="860"
-        style="background:white;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
-        <defs>
-          <marker id="arr-s" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
-            <path d="M0,0 L0,6 L6,3 z" fill="{STRENGTH_COLORS['Strong']}"/>
-          </marker>
-          <marker id="arr-m" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
-            <path d="M0,0 L0,6 L6,3 z" fill="{STRENGTH_COLORS['Medium']}"/>
-          </marker>
-          <marker id="arr-w" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
-            <path d="M0,0 L0,6 L6,3 z" fill="{STRENGTH_COLORS['Weak']}"/>
-          </marker>
-        </defs>
-        {''.join(svg_lines)}
-        {''.join(svg_nodes)}
-        <!-- Legend -->
-        <rect x="740" y="20" width="200" height="120" rx="8" fill="white" stroke="#eee"/>
-        <text x="755" y="44" font-size="12" font-weight="bold" fill="#333">Relationship strength</text>
-        <line x1="755" y1="64" x2="800" y2="64" stroke="{STRENGTH_COLORS['Strong']}" stroke-width="3"/>
-        <text x="810" y="68" font-size="11" fill="#555">Strong — causal</text>
-        <line x1="755" y1="88" x2="800" y2="88" stroke="{STRENGTH_COLORS['Medium']}" stroke-width="2" stroke-dasharray="6,3"/>
-        <text x="810" y="92" font-size="11" fill="#555">Medium — correlational</text>
-        <line x1="755" y1="112" x2="800" y2="112" stroke="{STRENGTH_COLORS['Weak']}" stroke-width="1" stroke-dasharray="3,5"/>
-        <text x="810" y="116" font-size="11" fill="#555">Weak — future (P3)</text>
+    net.set_options("""
+    {
+      "interaction": {"hover": true, "tooltipDelay": 120},
+      "physics": {"stabilization": {"iterations": 300}}
+    }
+    """)
+
+    html = net.generate_html()
+    # Streamlit's st.tabs() renders every tab's content on every run, hidden
+    # tabs included — so this component's iframe often first mounts while its
+    # container is display:none. vis-network measures canvas size once at
+    # that point and never re-measures on its own, so switching to this tab
+    # later shows everything crammed at (0,0). A plain fit()-after-load isn't
+    # enough: it still measures a zero-size canvas. A ResizeObserver on the
+    # container catches the display:none -> visible transition (a real size
+    # change) and forces a redraw + fit at that moment; stabilizationIterationsDone
+    # plus a poll are backup triggers for the same fit. Physics is left running
+    # (not frozen) so barnes_hut keeps relaxing the layout after the initial burst.
+    fit_script = """
+    <script type="text/javascript">
+    window.addEventListener('load', function () {
+        function whenNetworkReady(cb, attemptsLeft) {
+            if (typeof network !== 'undefined' && network) { cb(); return; }
+            if (attemptsLeft > 0) setTimeout(function () { whenNetworkReady(cb, attemptsLeft - 1); }, 100);
+        }
+        whenNetworkReady(function () {
+            var container = document.getElementById('mynetwork');
+
+            function settle() {
+                network.redraw();
+                network.fit({ animation: false });
+            }
+
+            network.once('stabilizationIterationsDone', settle);
+
+            if (window.ResizeObserver && container) {
+                var ro = new ResizeObserver(function (entries) {
+                    for (var i = 0; i < entries.length; i++) {
+                        if (entries[i].contentRect.width > 0 && entries[i].contentRect.height > 0) {
+                            settle();
+                        }
+                    }
+                });
+                ro.observe(container);
+            }
+
+            var tries = 0;
+            var poll = setInterval(function () {
+                tries++;
+                if (container && container.clientWidth > 0) settle();
+                if (tries > 20) clearInterval(poll);
+            }, 300);
+        }, 30);
+    });
+    </script>
+    """
+    html = html.replace("</body>", fit_script + "</body>")
+    return html
+
+
+def _legend_svg():
+    return f"""<svg width="200" height="130" style="background:white;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+        <rect x="0" y="0" width="200" height="120" rx="8" fill="white" stroke="#eee"/>
+        <text x="15" y="24" font-size="12" font-weight="bold" fill="#333">Relationship strength</text>
+        <line x1="15" y1="44" x2="60" y2="44" stroke="{STRENGTH_COLORS['Strong']}" stroke-width="3"/>
+        <text x="70" y="48" font-size="11" fill="#555">Strong — causal</text>
+        <line x1="15" y1="68" x2="60" y2="68" stroke="{STRENGTH_COLORS['Medium']}" stroke-width="2" stroke-dasharray="8,4"/>
+        <text x="70" y="72" font-size="11" fill="#555">Medium — correlational</text>
+        <line x1="15" y1="92" x2="60" y2="92" stroke="{STRENGTH_COLORS['Weak']}" stroke-width="1" stroke-dasharray="2,4"/>
+        <text x="70" y="96" font-size="11" fill="#555">Weak — future (P3)</text>
     </svg>"""
 
-    components.html(svg, height=880)
+
+def render_graph():
+    graph_area = st.container()
+
+    st.divider()
+    st.markdown("**Select a domain to see its relationships:**")
+
+    selected_domain = st.selectbox(
+        "Domain",
+        ["— select —"] + list(DOMAIN_META.keys()),
+        key="graph_domain_select"
+    )
+    selected = selected_domain if selected_domain != "— select —" else None
+
+    with graph_area:
+        col_graph, col_legend = st.columns([4, 1])
+        with col_graph:
+            components.html(_build_domain_graph_html(selected), height=970, scrolling=False)
+        with col_legend:
+            components.html(_legend_svg(), height=140)
+
+    if selected:
+        dM = DOMAIN_META[selected]
+        rels = [(f, t, p, count, short, bullets, datasets, join)
+                for f, t, p, count, short, bullets, datasets, join in RELATIONS
+                if f == selected or t == selected]
+
+        st.markdown(
+            f"<div style='border-left:4px solid {dM['color']};padding-left:12px;margin:10px 0;'>"
+            f"<strong style='font-size:16px;color:{dM['color']}'>{dM['icon']} {selected}</strong>"
+            f"<span style='font-size:12px;color:#888;margin-left:8px;'>{len(rels)} P1 relationship group(s)</span>"
+            f"</div>",
+            unsafe_allow_html=True
+        )
+
+        for f, t, p, count, short, bullets, datasets, join in rels:
+            other = t if f == selected else f
+            other_meta = DOMAIN_META.get(other, {"color": "#888", "icon": "📂"})
+            isSelf = f == t
+            border = dM["color"] if isSelf else other_meta["color"]
+            label = f"{dM['icon']} {selected} ↔ (internal)" if isSelf else f"{dM['icon']} {selected} → {other_meta['icon']} {other}"
+
+            with st.expander(f"{label}  —  P1·{count} · {short}"):
+                for b in bullets:
+                    st.markdown(f"&nbsp;&nbsp;{b}")
+                st.markdown("**Datasets:** " + " · ".join([f"`{d}`" for d in datasets]))
+                st.markdown(f"**Join key:** `{join}`")
+
+        p3rels = [(f, t, desc) for f, t, desc in P3_RELATIONS
+                  if f == selected or t == selected]
+        if p3rels:
+            st.markdown("**Future development — P3:**")
+            for f, t, desc in p3rels:
+                other = t if f == selected else f
+                oM = DOMAIN_META.get(other, {"icon": "📂"})
+                st.markdown(f"&nbsp;&nbsp;{oM['icon']} **{other}**: {desc}")
 
 
 def render():

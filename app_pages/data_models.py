@@ -1,7 +1,5 @@
 import streamlit as st
-import streamlit.components.v1 as components
 import pandas as pd
-import math
 
 DOMAIN_META = {
     "Mobility":       {"icon": "🚗", "color": "#e8593c"},
@@ -263,95 +261,6 @@ def show_relation_detail(f, t):
     st.markdown(f"**Join key:** `{join}`")
 
 
-def render_graph():
-    domains = list(DOMAIN_META.keys())
-    n = len(domains)
-    positions = {}
-    cx, cy, r = 500, 430, 310
-    for i, d in enumerate(domains):
-        angle = 2 * math.pi * i / n - math.pi / 2
-        positions[d] = (cx + r * math.cos(angle), cy + r * math.sin(angle))
-
-    svg_lines = []
-    for f, t, p, count, *_ in RELATIONS:
-        if f == t:
-            continue
-        x1, y1 = positions[f]
-        x2, y2 = positions[t]
-        w = min(1.5 + count * 0.5, 7)
-        svg_lines.append(
-            f'<line x1="{x1:.0f}" y1="{y1:.0f}" x2="{x2:.0f}" y2="{y2:.0f}" '
-            f'stroke="#3498db" stroke-width="{w:.1f}" opacity="0.3"/>'
-        )
-
-    svg_nodes = []
-    for d, (x, y) in positions.items():
-        meta = DOMAIN_META[d]
-        color = meta["color"]
-        icon = meta["icon"]
-        p1_total = sum(count for f, t, p, count, *_ in RELATIONS if p == "P1" and (f == d or t == d))
-        svg_nodes.append(f'''
-        <g>
-          <circle cx="{x:.0f}" cy="{y:.0f}" r="50" fill="{color}" opacity="0.12" stroke="{color}" stroke-width="2.5"/>
-          <text x="{x:.0f}" y="{y-16:.0f}" text-anchor="middle" font-size="22">{icon}</text>
-          <text x="{x:.0f}" y="{y+2:.0f}" text-anchor="middle" font-size="10" font-weight="bold" fill="{color}">{d}</text>
-          <text x="{x:.0f}" y="{y+17:.0f}" text-anchor="middle" font-size="9" fill="#aaa">{p1_total} P1 links</text>
-        </g>''')
-
-    svg_html = f"""<svg width="1000" height="860"
-        style="background:white;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
-        {''.join(svg_lines)}
-        {''.join(svg_nodes)}
-    </svg>"""
-
-    components.html(svg_html, height=880)
-
-    st.divider()
-    st.markdown("**Select a domain to see its relationships:**")
-
-    selected_domain = st.selectbox(
-        "Domain",
-        ["— select —"] + list(DOMAIN_META.keys()),
-        key="graph_domain_select"
-    )
-
-    if selected_domain != "— select —":
-        dM = DOMAIN_META[selected_domain]
-        rels = [(f, t, p, count, short, bullets, datasets, join)
-                for f, t, p, count, short, bullets, datasets, join in RELATIONS
-                if f == selected_domain or t == selected_domain]
-
-        st.markdown(
-            f"<div style='border-left:4px solid {dM['color']};padding-left:12px;margin:10px 0;'>"
-            f"<strong style='font-size:16px;color:{dM['color']}'>{dM['icon']} {selected_domain}</strong>"
-            f"<span style='font-size:12px;color:#888;margin-left:8px;'>{len(rels)} P1 relationship group(s)</span>"
-            f"</div>",
-            unsafe_allow_html=True
-        )
-
-        for f, t, p, count, short, bullets, datasets, join in rels:
-            other = t if f == selected_domain else f
-            other_meta = DOMAIN_META.get(other, {"color": "#888", "icon": "📂"})
-            isSelf = f == t
-            border = dM["color"] if isSelf else other_meta["color"]
-            label = f"{dM['icon']} {selected_domain} ↔ (internal)" if isSelf else f"{dM['icon']} {selected_domain} → {other_meta['icon']} {other}"
-
-            with st.expander(f"{label}  —  P1·{count} · {short}"):
-                for b in bullets:
-                    st.markdown(f"&nbsp;&nbsp;{b}")
-                st.markdown("**Datasets:** " + " · ".join([f"`{d}`" for d in datasets]))
-                st.markdown(f"**Join key:** `{join}`")
-
-        p3rels = [(f, t, desc) for f, t, desc in P3_RELATIONS
-                  if f == selected_domain or t == selected_domain]
-        if p3rels:
-            st.markdown("**Future development — P3:**")
-            for f, t, desc in p3rels:
-                other = t if f == selected_domain else f
-                oM = DOMAIN_META.get(other, {"icon": "📂"})
-                st.markdown(f"&nbsp;&nbsp;{oM['icon']} **{other}**: {desc}")
-
-
 def render_matrix():
     domains = list(DOMAIN_META.keys())
     st.caption("Click a **P1** button to see the full relationship explanation below")
@@ -471,10 +380,8 @@ def render_entities():
 
 
 def render():
-    tab1, tab2, tab3 = st.tabs(["🌐 Domain Graph", "📊 Relation Matrix", "📋 Entity Details"])
+    tab1, tab2 = st.tabs(["📊 Relation Matrix", "📋 Entity Details"])
     with tab1:
-        render_graph()
-    with tab2:
         render_matrix()
-    with tab3:
+    with tab2:
         render_entities()

@@ -4,10 +4,15 @@ from config import CATALOG, DOMAIN_META, RELATIONS, get_active_domains
 
 def render():
     active_domains = get_active_domains()
+    display_domains = [d for d in active_domains if d != "Tram B"]
     sources = len(set(d["source"] for d in CATALOG))
 
     col1, col2, col3 = st.columns(3)
-    col1.metric("Domains",  len(active_domains))
+    col1.metric(
+        "Domains", len(display_domains),
+        help="Tram B datasets are included in the total count but shown separately "
+             "under the Tram sub-tab, not as a standalone domain here.",
+    )
     col2.metric("Datasets", len(CATALOG))
     col3.metric("Sources",  sources)
 
@@ -18,7 +23,7 @@ def render():
     selected = st.session_state.get("selected_domain")
 
     cols = st.columns(5)
-    for i, domain in enumerate(active_domains):
+    for i, domain in enumerate(display_domains):
         meta = DOMAIN_META.get(domain, {"icon": "📂", "label": domain, "color": "#888"})
         n = counts.get(domain, 0)
         is_selected = selected == domain
