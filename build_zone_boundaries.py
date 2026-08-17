@@ -1,3 +1,4 @@
+
 """
 Fetch official commune boundary polygons — Bordeaux Urban Digital Twin
 Run this LOCALLY (needs internet access):

@@ -17,7 +17,7 @@ h1 { font-size: 36px !important; font-weight: 800 !important; }
 h2 { font-size: 27px !important; font-weight: 750 !important; }
 h3 { font-size: 21px !important; font-weight: 700 !important; }
 
-/* هم روی خودِ تب، هم روی متن داخلش (p) اعمال می‌شه */
+
 .stTabs [data-baseweb="tab"],
 .stTabs [data-baseweb="tab"] p,
 .stTabs button[role="tab"],
