@@ -202,7 +202,7 @@ def _sensor_map_html(summary_df, color):
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
 html, body { height:100%; }
-#map { width:100%; height:370px; background:#0f1923; }
+#map { width:100%; height:370px; background:#e8e8e8; }
 .leaflet-popup-content-wrapper { background:rgba(15,25,35,0.96) !important; border:1px solid #ffffff33 !important; border-radius:8px !important; color:white !important; }
 .leaflet-popup-content { margin:9px 12px !important; font-size:12px !important; }
 .leaflet-popup-tip { background:rgba(15,25,35,0.96) !important; }
@@ -216,8 +216,8 @@ const COLOR = "__COLOR__";
 
 const map = L.map('map', { zoomControl: false, center: [44.85, -0.58], zoom: 12 });
 L.control.zoom({ position: 'bottomright' }).addTo(map);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; OpenStreetMap contributors &copy; CARTO', subdomains: 'abcd', maxZoom: 19,
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors', maxZoom: 19,
 }).addTo(map);
 
 L.geoJSON(GEOJSON, {
@@ -293,7 +293,7 @@ def _heatmap_html(car_points, bus_lines, boundary_geojson, bounds, pollutant_lab
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
 html, body { height:100%; }
-#map { width:100%; height:480px; background:#0f1923; }
+#map { width:100%; height:480px; background:#e8e8e8; }
 .leaflet-popup-content-wrapper { background:rgba(15,25,35,0.96) !important; border:1px solid #ffffff33 !important; border-radius:8px !important; color:white !important; }
 .leaflet-popup-content { margin:9px 12px !important; font-size:12px !important; }
 .leaflet-popup-tip { background:rgba(15,25,35,0.96) !important; }
@@ -312,8 +312,8 @@ const WIND_ARROWS = __WIND_ARROWS__;
 
 const map = L.map('map', { zoomControl: false, center: [44.85, -0.58], zoom: 12 });
 L.control.zoom({ position: 'bottomright' }).addTo(map);
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; OpenStreetMap contributors &copy; CARTO', subdomains: 'abcd', maxZoom: 19,
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors', maxZoom: 19,
 }).addTo(map);
 
 if (ZONE_GEOJSON) {

@@ -261,23 +261,20 @@ body { font-family: Arial, sans-serif; background:#0f1923; }
 <div id="map"></div>
 <div id="live-badge">&#9679; LIVE &#8212; __N_VEHICLES__ VEHICLES</div>
 <div id="controls">
-    <button class="ctrl-btn active" id="btn-dark" onclick="setStyle('dark')">Dark</button>
-    <button class="ctrl-btn" id="btn-light" onclick="setStyle('light')">Light</button>
+    <button class="ctrl-btn active" id="btn-light" onclick="setStyle('light')">Light</button>
     <button class="ctrl-btn" id="btn-satellite" onclick="setStyle('satellite')">Satellite</button>
 </div>
 <script>
-// Free, unlimited, no-API-key raster tiles — CARTO basemaps + Esri World Imagery
-// (satellite). Leaflet (not MapLibre/Mapbox): see build_html()'s docstring in
+// Free, unlimited, no-API-key raster tiles — OpenStreetMap standard + Esri World
+// Imagery (satellite). Leaflet (not MapLibre/Mapbox): see build_html()'s docstring in
 // simulation.py for why — MapLibre's worker never completes inside Streamlit's
 // component iframe, Leaflet has no such dependency.
 const TILE_URLS = {
-    dark: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-    light: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+    light: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     satellite: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
 };
 const TILE_ATTR = {
-    dark: '&copy; OpenStreetMap contributors &copy; CARTO',
-    light: '&copy; OpenStreetMap contributors &copy; CARTO',
+    light: '&copy; OpenStreetMap contributors',
     satellite: 'Esri, Maxar, Earthstar Geographics',
 };
 
@@ -297,10 +294,10 @@ let currentTileLayer = null;
 function setStyle(name) {
     if (currentTileLayer) map.removeLayer(currentTileLayer);
     currentTileLayer = L.tileLayer(TILE_URLS[name], { attribution: TILE_ATTR[name], subdomains: 'abcd', maxZoom: 19 }).addTo(map);
-    ['btn-dark', 'btn-light', 'btn-satellite'].forEach(id => document.getElementById(id).classList.remove('active'));
+    ['btn-light', 'btn-satellite'].forEach(id => document.getElementById(id).classList.remove('active'));
     document.getElementById('btn-' + name).classList.add('active');
 }
-setStyle('dark');
+setStyle('light');
 
 map.whenReady(function () {
     map.invalidateSize();
